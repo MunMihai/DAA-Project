@@ -1,6 +1,8 @@
 import { type ReactNode, useMemo, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { IconMoon, IconSun } from "../components/AuthShell.tsx";
+import { applyTheme, getInitialTheme } from "../theme.ts";
 
 function cn(...xs: Array<string | false | null | undefined>) {
     return xs.filter(Boolean).join(" ");
@@ -135,6 +137,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     const menu = useMemo(
         () => [
+            { to: "/app/admin/quizzes", label: "Admin Quizuri", icon: <IconQuiz className="h-5 w-5" /> },
             { to: "/app", label: "Dashboard", icon: <IconHome className="h-5 w-5" /> },
             { to: "/app/quizzes", label: "Quizuri", icon: <IconQuiz className="h-5 w-5" /> },
             { to: "/app/contests", label: "Concursuri", icon: <IconTrophy className="h-5 w-5" /> },
@@ -147,7 +150,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         logout();
         nav("/login");
     };
-
+    const [theme, setTheme] = useState<"light" | "dark">(getInitialTheme());
+    const isDark = theme === "dark";
+    const toggle = () => {
+        const next = isDark ? "light" : "dark";
+        setTheme(next);
+        applyTheme(next);
+    };
     return (
         <>
             <header className="sticky top-0 z-30 border-b border-slate-900/10 bg-white/85 backdrop-blur dark:border-white/10 dark:bg-slate-900/60">
@@ -194,6 +203,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                         >
                             <IconLogout className="h-5 w-5" />
                             <span className="hidden sm:inline">Logout</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={toggle}
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:bg-slate-900"
+                            aria-label="Toggle theme"
+                        >
+                            {isDark ? <IconSun className="h-4 w-4" /> : <IconMoon className="h-4 w-4" />}
+                            <span className="hidden sm:inline">{isDark ? "Light" : "Dark"}</span>
                         </button>
                     </div>
                 </div>

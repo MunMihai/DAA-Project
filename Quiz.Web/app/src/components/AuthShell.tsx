@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { applyTheme, getInitialTheme } from "../theme.ts";
 
-function IconSun({ className }: { className?: string }) {
+export function IconSun({ className }: { className?: string }) {
     return (
         <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
             <path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" className="stroke-current" strokeWidth="2" />
@@ -15,7 +15,7 @@ function IconSun({ className }: { className?: string }) {
     );
 }
 
-function IconMoon({ className }: { className?: string }) {
+export function IconMoon({ className }: { className?: string }) {
     return (
         <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
             <path
@@ -37,7 +37,7 @@ export function AuthShell({
     subtitle: string;
     children: ReactNode;
 }) {
-    const [theme, setTheme] = useState<"light" | "dark">("light");
+    const [theme, setTheme] = useState<"light" | "dark">(getInitialTheme());
 
     useEffect(() => {
         const t = getInitialTheme();

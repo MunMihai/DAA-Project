@@ -7,6 +7,9 @@ import { AppShell } from "./layout/AppShell.tsx";
 import { QuizzesPage } from "./pages/app/QuizzesPage.tsx";
 import { ContestsPage } from "./pages/app/ContestsPage.tsx";
 import { SubmissionsPage } from "./pages/app/SubmissionsPage.tsx";
+import { AdminQuizzesPage } from "./pages/admin/AdminQuizzesPage.tsx";
+import { AdminQuizEditorPage } from "./pages/admin/AdminQuizEditorPage.tsx";
+import { applyTheme, getInitialTheme } from "./theme.ts";
 
 export function AppLayout() {
     return (
@@ -17,6 +20,7 @@ export function AppLayout() {
 }
 
 export default function App() {
+    applyTheme(getInitialTheme());
     return (
         <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
@@ -30,6 +34,8 @@ export default function App() {
                     <Route path="quizzes" element={<QuizzesPage />} />
                     <Route path="contests" element={<ContestsPage />} />
                     <Route path="submissions" element={<SubmissionsPage />} />
+                    <Route path="admin/quizzes" element={<AdminQuizzesPage />} />
+                    <Route path="admin/quizzes/:id" element={<AdminQuizEditorPage />} />
                 </Route>
             </Route>
 
