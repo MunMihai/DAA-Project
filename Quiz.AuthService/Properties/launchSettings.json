@@ -1,0 +1,11 @@
+﻿{
+  "profiles": {
+    "Quiz.AuthService": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5001",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

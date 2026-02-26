@@ -4,6 +4,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Quiz.API", "Quiz.API\Quiz.A
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Quiz.Web", "Quiz.Web\Quiz.Web.csproj", "{8FDCBCF1-16FA-4893-8E26-F34483CC005C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Quiz.AuthService", "Quiz.AuthService\Quiz.AuthService.csproj", "{3DC441FF-9C2B-4D38-AFBA-BFA698F880CC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Quiz.ApiGateway", "Quiz.ApiGateway\Quiz.ApiGateway.csproj", "{482EDFF2-B9C1-443B-AB18-AE22D33ECBFE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +22,13 @@ Global
 		{8FDCBCF1-16FA-4893-8E26-F34483CC005C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8FDCBCF1-16FA-4893-8E26-F34483CC005C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8FDCBCF1-16FA-4893-8E26-F34483CC005C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3DC441FF-9C2B-4D38-AFBA-BFA698F880CC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3DC441FF-9C2B-4D38-AFBA-BFA698F880CC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3DC441FF-9C2B-4D38-AFBA-BFA698F880CC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3DC441FF-9C2B-4D38-AFBA-BFA698F880CC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{482EDFF2-B9C1-443B-AB18-AE22D33ECBFE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{482EDFF2-B9C1-443B-AB18-AE22D33ECBFE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{482EDFF2-B9C1-443B-AB18-AE22D33ECBFE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{482EDFF2-B9C1-443B-AB18-AE22D33ECBFE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
