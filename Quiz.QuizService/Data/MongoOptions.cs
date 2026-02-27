@@ -2,6 +2,6 @@ namespace Quiz.QuizService.Data;
 
 public sealed class MongoOptions
 {
-    public string ConnectionString { get; init; } = "";
-    public string Database { get; init; } = "";
+    public string? ConnectionString { get; set; } = "";
+    public string Database { get; set; } = "";
 }

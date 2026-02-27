@@ -1,0 +1,67 @@
+services:
+  identity-db:
+    image: postgres:16-alpine
+    container_name: quiz-identity
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: identitydb
+      POSTGRES_USER: identity_user
+      POSTGRES_PASSWORD: identity_pass
+    ports:
+      - "6000:5432"
+    volumes:
+      - identity_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U identity_user -d identitydb"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    
+  rabbit:
+    image: rabbitmq:3-management
+    container_name: quiz-rabbit
+    restart: unless-stopped
+    ports:
+      - "6003:5672"    # AMQP
+      - "6004:15672"   # UI management
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    
+  
+  quiz-mongo:
+    image: mongo:7
+    container_name: quiz-mongo
+    restart: unless-stopped
+    ports:
+      - "6001:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: quiz_root
+      MONGO_INITDB_ROOT_PASSWORD: quiz_root_pass
+    volumes:
+      - quiz_mongo_data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--quiet", "mongodb://quiz_root:quiz_root_pass@localhost:27017/admin", "--eval", "db.runCommand({ ping: 1 }).ok" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  quiz-redis:
+    image: redis:7-alpine
+    container_name: quiz-redis
+    restart: unless-stopped
+    ports:
+      - "6002:6379"
+    command: [ "redis-server", "--save", "60", "1", "--appendonly", "yes" ]
+    volumes:
+      - quiz_redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  quiz_mongo_data:
+  quiz_redis_data:
+  identity_db_data:

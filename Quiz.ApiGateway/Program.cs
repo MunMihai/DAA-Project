@@ -15,7 +15,10 @@ builder.Services.AddCors(opt =>
 var app = builder.Build();
 
 app.UseCors("web");
-
+app.UseWebSockets(new WebSocketOptions
+{
+    KeepAliveInterval = TimeSpan.FromSeconds(15)
+});
 // optional: health check
 app.MapGet("/healthz", () => Results.Ok(new { ok = true }));
 

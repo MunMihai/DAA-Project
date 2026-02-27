@@ -3,21 +3,44 @@ using MongoDB.Driver;
 using Quiz.QuizService.Data;
 using Quiz.QuizService.DTOs;
 using Quiz.QuizService.Models;
+using Quiz.QuizService.Services;
 
 namespace Quiz.QuizService.Controllers;
 
 [ApiController]
 [Route("api/quiz-attempts")]
-public sealed class AttemptsController(MongoContext db) : ControllerBase
+public sealed class AttemptsController(MongoContext db, RedisJsonCache rc) : ControllerBase
 {
+    private static readonly TimeSpan TtlQuizFull = TimeSpan.FromMinutes(10);
+
     [HttpPost("start")]
-    public async Task<ActionResult<StartAttemptResponse>> Start([FromBody] StartAttemptRequest req)
+    public async Task<ActionResult<StartAttemptResponse>> Start([FromBody] StartAttemptRequest req, CancellationToken ct)
     {
-        var quiz = await db.Quizzes.Find(x => x.Id == req.QuizId).FirstOrDefaultAsync();
+        if (string.IsNullOrWhiteSpace(req.QuizId))
+            return BadRequest(new { message = "QuizId is required." });
+
+        if (string.IsNullOrWhiteSpace(req.UserIdOrEmail))
+            return BadRequest(new { message = "UserIdOrEmail is required." });
+
+        // ✅ Get quiz from Redis (or Mongo fallback)
+        var quizCacheKey = CacheKeys.QuizById(req.QuizId);
+
+        var cachedQuiz = await rc.GetAsync<QuizEntity>(quizCacheKey, ct);
+        if (cachedQuiz is not null) Response.Headers["X-Quiz-Cache"] = "HIT";
+        else Response.Headers["X-Quiz-Cache"] = "MISS";
+
+        var quiz = cachedQuiz ?? await db.Quizzes.Find(x => x.Id == req.QuizId).FirstOrDefaultAsync(ct);
         if (quiz is null) return NotFound(new { message = "Quiz not found." });
-        if (quiz.Status != QuizStatus.Published) return BadRequest(new { message = "Quiz is not published." });
+
+        // if came from DB, cache it
+        if (cachedQuiz is null)
+            await rc.SetAsync(quizCacheKey, quiz, TtlQuizFull, ct);
+
+        if (quiz.Status != QuizStatus.Published)
+            return BadRequest(new { message = "Quiz is not published." });
 
         var now = DateTimeOffset.UtcNow;
+
         var attempt = new QuizAttempt
         {
             QuizId = quiz.Id,
@@ -29,15 +52,27 @@ public sealed class AttemptsController(MongoContext db) : ControllerBase
             TotalPoints = quiz.Questions.Sum(q => q.Points)
         };
 
-        await db.Attempts.InsertOneAsync(attempt);
+        await db.Attempts.InsertOneAsync(attempt, cancellationToken: ct);
 
-        return Ok(new StartAttemptResponse(attempt.Id, attempt.QuizId, attempt.StartedAt, attempt.ExpiresAt, attempt.TimeLimitSeconds));
+        return Ok(new StartAttemptResponse(
+            attempt.Id,
+            attempt.QuizId,
+            attempt.StartedAt,
+            attempt.ExpiresAt,
+            attempt.TimeLimitSeconds
+        ));
     }
 
     [HttpPut("{attemptId}/answer")]
-    public async Task<IActionResult> SaveAnswer(string attemptId, [FromBody] SaveAnswerRequest req)
+    public async Task<IActionResult> SaveAnswer(string attemptId, [FromBody] SaveAnswerRequest req, CancellationToken ct)
     {
-        var attempt = await db.Attempts.Find(x => x.Id == attemptId).FirstOrDefaultAsync();
+        if (string.IsNullOrWhiteSpace(attemptId))
+            return BadRequest(new { message = "attemptId is required." });
+
+        if (string.IsNullOrWhiteSpace(req.QuestionId))
+            return BadRequest(new { message = "QuestionId is required." });
+
+        var attempt = await db.Attempts.Find(x => x.Id == attemptId).FirstOrDefaultAsync(ct);
         if (attempt is null) return NotFound();
         if (attempt.Status != AttemptStatus.Started) return BadRequest(new { message = "Attempt not active." });
         if (DateTimeOffset.UtcNow > attempt.ExpiresAt) return BadRequest(new { message = "Attempt expired." });
@@ -55,28 +90,43 @@ public sealed class AttemptsController(MongoContext db) : ControllerBase
         ans.TextAnswer = req.TextAnswer;
         ans.UpdatedAt = DateTimeOffset.UtcNow;
 
-        await db.Attempts.ReplaceOneAsync(x => x.Id == attemptId, attempt);
+        await db.Attempts.ReplaceOneAsync(x => x.Id == attemptId, attempt, cancellationToken: ct);
         return NoContent();
     }
 
     [HttpPost("{attemptId}/submit")]
-    public async Task<ActionResult<SubmitAttemptResponse>> Submit(string attemptId)
+    public async Task<ActionResult<SubmitAttemptResponse>> Submit(string attemptId, CancellationToken ct)
     {
-        var attempt = await db.Attempts.Find(x => x.Id == attemptId).FirstOrDefaultAsync();
+        if (string.IsNullOrWhiteSpace(attemptId))
+            return BadRequest(new { message = "attemptId is required." });
+
+        var attempt = await db.Attempts.Find(x => x.Id == attemptId).FirstOrDefaultAsync(ct);
         if (attempt is null) return NotFound();
         if (attempt.Status != AttemptStatus.Started) return BadRequest(new { message = "Attempt not active." });
 
-        var quiz = await db.Quizzes.Find(x => x.Id == attempt.QuizId).FirstOrDefaultAsync();
+        // ✅ Get quiz from Redis (or Mongo fallback) by attempt.QuizId
+        var quizCacheKey = CacheKeys.QuizById(attempt.QuizId);
+
+        var cachedQuiz = await rc.GetAsync<QuizEntity>(quizCacheKey, ct);
+        if (cachedQuiz is not null) Response.Headers["X-Quiz-Cache"] = "HIT";
+        else Response.Headers["X-Quiz-Cache"] = "MISS";
+
+        var quiz = cachedQuiz ?? await db.Quizzes.Find(x => x.Id == attempt.QuizId).FirstOrDefaultAsync(ct);
         if (quiz is null) return NotFound(new { message = "Quiz not found." });
+
+        // if came from DB, cache it
+        if (cachedQuiz is null)
+            await rc.SetAsync(quizCacheKey, quiz, TtlQuizFull, ct);
 
         // scoring
         var (earned, results) = Score(quiz, attempt);
+
         attempt.EarnedPoints = earned;
         attempt.Results = results;
         attempt.Status = DateTimeOffset.UtcNow > attempt.ExpiresAt ? AttemptStatus.Expired : AttemptStatus.Submitted;
         attempt.SubmittedAt = DateTimeOffset.UtcNow;
 
-        await db.Attempts.ReplaceOneAsync(x => x.Id == attemptId, attempt);
+        await db.Attempts.ReplaceOneAsync(x => x.Id == attemptId, attempt, cancellationToken: ct);
 
         return Ok(new SubmitAttemptResponse(
             attempt.Id,
@@ -98,17 +148,21 @@ public sealed class AttemptsController(MongoContext db) : ControllerBase
 
             var isCorrect = q.Type switch
             {
-                QuestionType.TrueFalse => ans?.BoolAnswer is not null && q.CorrectBool is not null && ans.BoolAnswer.Value == q.CorrectBool.Value,
+                QuestionType.TrueFalse =>
+                    ans?.BoolAnswer is not null && q.CorrectBool is not null && ans.BoolAnswer.Value == q.CorrectBool.Value,
 
-                QuestionType.SingleChoice => !string.IsNullOrWhiteSpace(ans?.SingleOptionId)
-                                            && q.CorrectOptionIds.Count == 1
-                                            && ans!.SingleOptionId == q.CorrectOptionIds[0],
+                QuestionType.SingleChoice =>
+                    !string.IsNullOrWhiteSpace(ans?.SingleOptionId)
+                    && q.CorrectOptionIds.Count == 1
+                    && ans!.SingleOptionId == q.CorrectOptionIds[0],
 
-                QuestionType.MultipleChoice => ans?.MultipleOptionIds is not null
-                                              && SetEquals(ans.MultipleOptionIds, q.CorrectOptionIds),
+                QuestionType.MultipleChoice =>
+                    ans?.MultipleOptionIds is not null
+                    && SetEquals(ans.MultipleOptionIds, q.CorrectOptionIds),
 
-                QuestionType.ShortText => !string.IsNullOrWhiteSpace(ans?.TextAnswer)
-                                         && q.AcceptedAnswers.Any(accepted => Normalize(accepted) == Normalize(ans!.TextAnswer)),
+                QuestionType.ShortText =>
+                    !string.IsNullOrWhiteSpace(ans?.TextAnswer)
+                    && q.AcceptedAnswers.Any(accepted => Normalize(accepted) == Normalize(ans!.TextAnswer)),
 
                 _ => false
             };
