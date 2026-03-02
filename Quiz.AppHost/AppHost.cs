@@ -50,14 +50,23 @@ var liveSessionService = builder.AddProject<Projects.Quiz_LiveSessionService>("l
     .WaitFor(rabbit)
     .WaitFor(quizService);
 
+// ── Coding Service ────────────────────────────────────────────────────────────
+var codingService = builder.AddProject<Projects.Quiz_CodingService>("codingservice")
+    .WithReference(redis)
+    .WithReference(rabbit)
+    .WaitFor(redis)
+    .WaitFor(rabbit);
+
 // ── API Gateway ───────────────────────────────────────────────────────────────
 var apiGateway = builder.AddProject<Projects.Quiz_ApiGateway>("apigateway")
     .WithReference(authService)
     .WithReference(quizService)
     .WithReference(liveSessionService)
+    .WithReference(codingService)
     .WaitFor(authService)
     .WaitFor(quizService)
-    .WaitFor(liveSessionService);
+    .WaitFor(liveSessionService)
+    .WaitFor(codingService);
 
 // ── Web Frontend ──────────────────────────────────────────────────────────────
 builder.AddJavaScriptApp("web", "../Quiz.Web/app")

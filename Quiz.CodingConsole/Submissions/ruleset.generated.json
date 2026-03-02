@@ -1,0 +1,93 @@
+{
+  "name": "Messaging Service Ruleset",
+  "language": "dotnet",
+  "rules": [
+    {
+      "id": "r1",
+      "type": "bind_interface",
+      "params": {
+        "alias": "I1",
+        "minImplementations": 1
+      }
+    },
+    {
+      "id": "r2",
+      "type": "bind_concrete_class_implementing",
+      "params": {
+        "alias": "C1",
+        "implementsAlias": "I1"
+      }
+    },
+    {
+      "id": "r3",
+      "type": "bind_abstract_class",
+      "params": {
+        "alias": "A1"
+      }
+    },
+    {
+      "id": "r4",
+      "type": "bind_concrete_subclass_of",
+      "params": {
+        "alias": "C2",
+        "baseAlias": "A1",
+        "minCount": 1
+      }
+    },
+    {
+      "id": "r5",
+      "type": "bind_method_on_type",
+      "params": {
+        "alias": "M1",
+        "onTypeAlias": "A1",
+        "access": "public",
+        "kind": "abstract",
+        "returnsAlias": "I1"
+      }
+    },
+    {
+      "id": "r6",
+      "type": "bind_method_on_type",
+      "params": {
+        "alias": "M2",
+        "onTypeAlias": "I1",
+        "access": "any",
+        "kind": "any",
+        "returnsAlias": "any"
+      }
+    },
+    {
+      "id": "r7",
+      "type": "require_inheritance",
+      "params": {
+        "childAlias": "C2",
+        "baseAlias": "A1"
+      }
+    },
+    {
+      "id": "r8",
+      "type": "require_implements",
+      "params": {
+        "typeAlias": "C1",
+        "interfaceAlias": "I1"
+      }
+    },
+    {
+      "id": "r9",
+      "type": "require_method_override",
+      "params": {
+        "typeAlias": "C2",
+        "overridesMethodAlias": "M1"
+      }
+    },
+    {
+      "id": "r10",
+      "type": "require_call",
+      "params": {
+        "callerTypeAlias": "A1",
+        "calleeMethodAlias": "M2"
+      }
+    }
+  ],
+  "notes": "Messaging service ruleset with abstract base class, interface, and concrete implementations"
+}

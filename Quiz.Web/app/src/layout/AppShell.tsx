@@ -138,6 +138,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                 label: "Live Quiz",
                 icon: <IconLive className="h-5 w-5" />,
             },
+            {
+                to: isAdmin ? "/app/coding-live/host" : "/app/coding-live",
+                label: "Live Coding",
+                icon: <IconCode className="h-5 w-5" />,
+            },
             { to: "/app/contests", label: "Concursuri", icon: <IconTrophy className="h-5 w-5" /> },
             { to: "/app/submissions", label: "Submisii", icon: <IconCode className="h-5 w-5" /> },
         ];
@@ -158,8 +163,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center gap-3">
                         <button type="button"
-                                className="inline-flex items-center justify-center rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-slate-800 shadow-sm hover:bg-slate-50 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-100 dark:hover:bg-slate-950/60 lg:hidden"
-                                onClick={() => setMobileOpen(true)} aria-label="Open menu">
+                            className="inline-flex items-center justify-center rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-slate-800 shadow-sm hover:bg-slate-50 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-100 dark:hover:bg-slate-950/60 lg:hidden"
+                            onClick={() => setMobileOpen(true)} aria-label="Open menu">
                             <IconMenu className="h-5 w-5" />
                         </button>
                         <Link to="/app" className="flex items-center gap-3">
@@ -183,13 +188,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                             </div>
                         </div>
                         <button onClick={onLogout}
-                                className="inline-flex items-center gap-2 rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-100 dark:hover:bg-slate-950/60">
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-100 dark:hover:bg-slate-950/60">
                             <IconLogout className="h-5 w-5" />
                             <span className="hidden sm:inline">Logout</span>
                         </button>
                         <button type="button" onClick={toggle}
-                                className="inline-flex items-center gap-2 rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:bg-slate-900"
-                                aria-label="Toggle theme">
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:bg-slate-900"
+                            aria-label="Toggle theme">
                             {isDark ? <IconSun className="h-4 w-4" /> : <IconMoon className="h-4 w-4" />}
                             <span className="hidden sm:inline">{isDark ? "Light" : "Dark"}</span>
                         </button>
@@ -249,7 +254,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                                         </div>
                                     </div>
                                     <button className="inline-flex items-center justify-center rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-slate-800 shadow-sm dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-100"
-                                            onClick={() => setMobileOpen(false)}>
+                                        onClick={() => setMobileOpen(false)}>
                                         <IconX className="h-5 w-5" />
                                     </button>
                                 </div>

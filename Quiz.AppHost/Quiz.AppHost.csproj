@@ -20,6 +20,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Quiz.AuthService\Quiz.AuthService.csproj" />
+        <ProjectReference Include="..\Quiz.CodingService\Quiz.CodingService.csproj" />
         <ProjectReference Include="..\Quiz.LiveSessionService\Quiz.LiveSessionService.csproj" />
         <ProjectReference Include="..\Quiz.QuizService\Quiz.QuizService.csproj" />
         <ProjectReference Include="..\Quiz.ApiGateway\Quiz.ApiGateway.csproj" />

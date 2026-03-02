@@ -74,3 +74,8 @@ docker-compose.override.yml
 appsettings.Development.json
 appsettings.Local.json
 secrets.json
+
+# Build outputs
+*.dll
+Debug/
+Release/
