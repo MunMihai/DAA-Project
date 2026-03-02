@@ -5,7 +5,6 @@ import {
     useLiveSession,
     type AnswerPayload,
     type LeaderboardEntry,
-    type QuizOption,
     type QuizQuestion,
 } from "../../hooks/useLiveSession";
 
@@ -31,15 +30,15 @@ function CountdownRing({ deadline, total }: { deadline: Date; total: number }) {
         <div className="relative inline-flex h-24 w-24 shrink-0 items-center justify-center">
             <svg className="absolute inset-0 -rotate-90" width="96" height="96" viewBox="0 0 96 96">
                 <circle cx="48" cy="48" r={r} fill="none" strokeWidth="6"
-                        className="stroke-slate-200 dark:stroke-slate-700" />
+                    className="stroke-slate-200 dark:stroke-slate-700" />
                 <circle cx="48" cy="48" r={r} fill="none" strokeWidth="6"
-                        strokeLinecap="round"
-                        strokeDasharray={circ}
-                        strokeDashoffset={circ * (1 - pct / 100)}
-                        className={cn(
-                            "transition-all duration-500",
-                            pct < 25 ? "stroke-red-500" : pct < 50 ? "stroke-amber-400" : "stroke-emerald-500"
-                        )} />
+                    strokeLinecap="round"
+                    strokeDasharray={circ}
+                    strokeDashoffset={circ * (1 - pct / 100)}
+                    className={cn(
+                        "transition-all duration-500",
+                        pct < 25 ? "stroke-red-500" : pct < 50 ? "stroke-amber-400" : "stroke-emerald-500"
+                    )} />
             </svg>
             <div className="text-center">
                 <span className={cn(
@@ -91,8 +90,8 @@ function MiniLeaderboard({ entries, myId }: { entries: LeaderboardEntry[]; myId:
 
 // ── Answer choice button ──────────────────────────────────────────────────────
 function ChoiceBtn({
-                       label, letter, selected, disabled, correct, wrong, onClick,
-                   }: {
+    label, letter, selected, disabled, correct, wrong, onClick,
+}: {
     label: string; letter: string; selected: boolean; disabled: boolean;
     correct?: boolean; wrong?: boolean; onClick: () => void;
 }) {
@@ -126,12 +125,13 @@ function ChoiceBtn({
 
 // ── Question player ───────────────────────────────────────────────────────────
 function QuestionPlayer({
-                            question, index, total, deadline, timeLimit, onSubmit, ack,
-                        }: {
+    question, index, total, deadline, timeLimit, onSubmit, ack, onNextQuestion
+}: {
     question: QuizQuestion; index: number; total: number;
     deadline: Date; timeLimit: number;
     onSubmit: (p: AnswerPayload) => void;
     ack: { isCorrect: boolean; pointsEarned: number; yourScore: number; expired?: boolean } | null;
+    onNextQuestion: () => void;
 }) {
     const [boolAns, setBoolAns] = useState<boolean | null>(null);
     const [singleId, setSingleId] = useState<string | null>(null);
@@ -222,8 +222,8 @@ function QuestionPlayer({
                                     label={opt.text}
                                     selected={sel}
                                     disabled={submitted}
-                                    correct={ack?.isCorrect && sel}
-                                    wrong={ack && !ack.isCorrect && sel}
+                                    correct={!!(ack?.isCorrect && sel)}
+                                    wrong={!!(ack && !ack.isCorrect && sel)}
                                     onClick={() => {
                                         if (submitted) return;
                                         question.type === 1 ? setSingleId(opt.id) : toggleMulti(opt.id);
@@ -267,19 +267,27 @@ function QuestionPlayer({
 
             {/* Ack banner */}
             {ack && (
-                <div className={cn(
-                    "flex items-center justify-between rounded-2xl border px-4 py-3 text-sm font-semibold",
-                    ack.expired ? "border-slate-300 bg-slate-50 text-slate-600 dark:border-white/10 dark:bg-slate-900/30 dark:text-slate-400"
-                        : ack.isCorrect
-                            ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
-                            : "border-red-300 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
-                )}>
-                    <span>
-                        {ack.expired ? "⏰ Timp expirat" : ack.isCorrect ? `✓ Corect! +${ack.pointsEarned}p` : "✗ Greșit"}
-                    </span>
-                    <span className="font-normal text-slate-500 dark:text-slate-400">
-                        Scor total: <strong className="text-slate-800 dark:text-slate-200">{ack.yourScore}p</strong>
-                    </span>
+                <div className="space-y-4">
+                    <div className={cn(
+                        "flex items-center justify-between rounded-2xl border px-4 py-3 text-sm font-semibold",
+                        ack.expired ? "border-slate-300 bg-slate-50 text-slate-600 dark:border-white/10 dark:bg-slate-900/30 dark:text-slate-400"
+                            : ack.isCorrect
+                                ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                                : "border-red-300 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+                    )}>
+                        <span>
+                            {ack.expired ? "⏰ Timp expirat" : ack.isCorrect ? `✓ Corect! +${ack.pointsEarned}p` : "✗ Greșit"}
+                        </span>
+                        <span className="font-normal text-slate-500 dark:text-slate-400">
+                            Scor total: <strong className="text-slate-800 dark:text-slate-200">{ack.yourScore}p</strong>
+                        </span>
+                    </div>
+                    <button
+                        onClick={onNextQuestion}
+                        className="w-full rounded-2xl bg-indigo-600 py-3.5 text-sm font-bold text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                    >
+                        Următoarea întrebare →
+                    </button>
                 </div>
             )}
 
@@ -379,7 +387,7 @@ export function JoinLivePage() {
     const [joined, setJoined] = useState(false);
     const [myConnectionId] = useState(() => Math.random().toString(36).slice(2));
 
-    const { state, submitAnswer } = useLiveSession(
+    const { state, submitAnswer, fetchNextQuestion } = useLiveSession(
         sessionCode,
         displayName,
         joined,
@@ -421,7 +429,7 @@ export function JoinLivePage() {
                 <div className="text-lg font-bold text-slate-900 dark:text-white">Conexiune pierdută</div>
                 <p className="text-sm text-slate-500 dark:text-slate-400">{state.error}</p>
                 <button onClick={() => { setJoined(false); nav("/app/live"); }}
-                        className="rounded-2xl bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 dark:bg-indigo-500">
+                    className="rounded-2xl bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 dark:bg-indigo-500">
                     Încearcă din nou
                 </button>
             </div>
@@ -455,7 +463,7 @@ export function JoinLivePage() {
                 </div>
 
                 <button onClick={() => nav("/app")}
-                        className="w-full rounded-2xl bg-indigo-600 py-3 text-sm font-bold text-white hover:bg-indigo-700 dark:bg-indigo-500">
+                    className="w-full rounded-2xl bg-indigo-600 py-3 text-sm font-bold text-white hover:bg-indigo-700 dark:bg-indigo-500">
                     Înapoi la Dashboard
                 </button>
             </div>
@@ -512,7 +520,13 @@ export function JoinLivePage() {
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_220px]">
                 {/* Question */}
                 <div className="rounded-3xl border border-slate-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
-                    {state.currentQuestion && state.deadlineUtc ? (
+                    {state.playerFinished ? (
+                        <div className="space-y-4 py-8 text-center text-slate-900 dark:text-white">
+                            <div className="text-4xl text-emerald-500">🎉</div>
+                            <div className="text-xl font-bold">Ai terminat examinarea!</div>
+                            <div className="text-sm text-slate-600 dark:text-slate-400">Te rugăm să aștepți până când profesorul închide sesiunea.</div>
+                        </div>
+                    ) : state.currentQuestion && state.deadlineUtc ? (
                         <QuestionPlayer
                             question={state.currentQuestion}
                             index={state.questionIndex}
@@ -521,6 +535,7 @@ export function JoinLivePage() {
                             timeLimit={state.timeLimitSeconds}
                             onSubmit={submitAnswer}
                             ack={state.lastAck}
+                            onNextQuestion={fetchNextQuestion}
                         />
                     ) : (
                         <div className="flex items-center gap-3 py-6 text-sm text-slate-400 dark:text-slate-500">
@@ -540,7 +555,7 @@ export function JoinLivePage() {
                         </div>
                         <div className="h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                             <div className="h-1.5 rounded-full bg-indigo-500 transition-all duration-500"
-                                 style={{ width: `${((state.questionIndex + 1) / Math.max(1, state.totalQuestions)) * 100}%` }} />
+                                style={{ width: `${((state.questionIndex + 1) / Math.max(1, state.totalQuestions)) * 100}%` }} />
                         </div>
                         {state.lastAck && (
                             <div className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">

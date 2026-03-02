@@ -9,6 +9,18 @@ export default defineConfig({
     ],
     server: {
         port: 4000,
+        proxy: {
+            '/api': {
+                target: 'http://localhost:5000',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/api/, ''),
+            },
+            '/hubs': {
+                target: 'http://localhost:5000',
+                changeOrigin: true,
+                ws: true, // Enable WebSocket proxy for SignalR
+            },
+        },
     },
     preview: {
         port: 4000,

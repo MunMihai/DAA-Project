@@ -78,14 +78,15 @@ function Leaderboard({ entries }: { entries: LeaderboardEntry[] }) {
 
 // ── Question player view ──────────────────────────────────────────────────────
 function QuestionPlayer({
-                            question,
-                            questionIndex,
-                            totalQuestions,
-                            deadlineUtc,
-                            timeLimitSeconds,
-                            onSubmit,
-                            ack,
-                        }: {
+    question,
+    questionIndex,
+    totalQuestions,
+    deadlineUtc,
+    timeLimitSeconds,
+    onSubmit,
+    ack,
+    onNextQuestion
+}: {
     question: QuizQuestion;
     questionIndex: number;
     totalQuestions: number;
@@ -93,6 +94,7 @@ function QuestionPlayer({
     timeLimitSeconds: number;
     onSubmit: (p: AnswerPayload) => void;
     ack: { isCorrect: boolean; pointsEarned: number; yourScore: number } | null;
+    onNextQuestion: () => void;
 }) {
     const [boolAns, setBoolAns] = useState<boolean | null>(null);
     const [singleId, setSingleId] = useState<string | null>(null);
@@ -220,16 +222,25 @@ function QuestionPlayer({
 
             {/* Ack */}
             {ack && (
-                <div className={cn(
-                    "rounded-2xl border px-4 py-3 text-sm font-semibold",
-                    ack.isCorrect
-                        ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
-                        : "border-red-300 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
-                )}>
-                    {ack.isCorrect ? `✓ Corect! +${ack.pointsEarned} puncte` : "✗ Greșit"}
-                    <span className="ml-3 font-normal text-slate-600 dark:text-slate-400">
-                        Scorul tău: {ack.yourScore} pt
-                    </span>
+                <div className="space-y-4">
+                    <div className={cn(
+                        "rounded-2xl border px-4 py-3 text-sm font-semibold",
+                        ack.isCorrect
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                            : "border-red-300 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+                    )}>
+                        {ack.isCorrect ? `✓ Corect! +${ack.pointsEarned} puncte` : "✗ Greșit"}
+                        <span className="ml-3 font-normal text-slate-600 dark:text-slate-400">
+                            Scorul tău: {ack.yourScore} pt
+                        </span>
+                    </div>
+
+                    <button
+                        onClick={onNextQuestion}
+                        className="w-full rounded-2xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                    >
+                        Următoarea întrebare →
+                    </button>
                 </div>
             )}
         </div>
@@ -238,9 +249,9 @@ function QuestionPlayer({
 
 // ── Create session modal ──────────────────────────────────────────────────────
 function CreateSessionModal({
-                                onCreated,
-                                onClose,
-                            }: {
+    onCreated,
+    onClose,
+}: {
     onCreated: (code: string) => void;
     onClose: () => void;
 }) {
@@ -334,7 +345,7 @@ export function LiveSessionPage() {
     const [isHost, setIsHost] = useState(isHostParam);
     const [showCreate, setShowCreate] = useState(false);
 
-    const { state, startSession, nextQuestion, submitAnswer, endSession } = useLiveSession(
+    const { state, startSession, fetchNextQuestion, submitAnswer, endSession } = useLiveSession(
         joined ? sessionCode : "",
         displayName,
         isHost
@@ -495,7 +506,7 @@ export function LiveSessionPage() {
                         <div>
                             <div className="flex items-center gap-3">
                                 <div className="text-xl font-bold text-slate-900 dark:text-white">
-                                    {isLobby ? "🎯 Lobby" : `❓ Întrebarea ${state.questionIndex + 1}`}
+                                    {isLobby ? "🎯 Lobby" : isHost ? "🎓 Examen în desfășurare" : state.playerFinished ? "🏁 Examen complet" : `❓ Întrebarea ${state.questionIndex + 1}`}
                                 </div>
                                 <span className={cn(
                                     "rounded-full px-2.5 py-1 text-xs font-semibold",
@@ -526,19 +537,10 @@ export function LiveSessionPage() {
                                 {isRunning && (
                                     <>
                                         <button
-                                            onClick={nextQuestion}
-                                            className="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 dark:bg-indigo-500"
-                                        >
-                                            Întrebarea {state.questionIndex + 2 <= state.totalQuestions
-                                            ? `${state.questionIndex + 2} →`
-                                            : "Finalizează ✓"
-                                        }
-                                        </button>
-                                        <button
                                             onClick={endSession}
                                             className="rounded-2xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200"
                                         >
-                                            Stop
+                                            Stop Examen
                                         </button>
                                     </>
                                 )}
@@ -579,41 +581,29 @@ export function LiveSessionPage() {
                 )}
 
                 {/* Question area */}
-                {isRunning && state.currentQuestion && (
+                {isRunning && (
                     <div className="rounded-3xl border border-slate-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
                         {isHost ? (
-                            /* Host sees question + live stats */
+                            /* Host sees exam monitoring view */
                             <div className="space-y-4">
-                                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                                    <span>Întrebarea {state.questionIndex + 1} / {state.totalQuestions}</span>
-                                    <span>{state.currentQuestion.points} pt</span>
+                                <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-6 text-center text-sm font-medium text-slate-900 dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-100">
+                                    Examenul este în curs de desfășurare. Studenții rezolvă quiz-ul individual. Monitorizează progresul și Leaderboard-ul din panoul lateral. Apasă pe "Stop Examen" când timpul expiră sau toți au terminat.
                                 </div>
-
                                 {state.deadlineUtc && (
                                     <Countdown
                                         deadlineUtc={state.deadlineUtc}
                                         totalSeconds={state.timeLimitSeconds}
                                     />
                                 )}
-
-                                <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4 text-sm font-medium text-slate-900 dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-100">
-                                    {state.currentQuestion.prompt}
-                                </div>
-
-                                {state.currentQuestion.options.length > 0 && (
-                                    <div className="space-y-2">
-                                        {state.currentQuestion.options.map((opt) => (
-                                            <div
-                                                key={opt.id}
-                                                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-300"
-                                            >
-                                                {opt.text}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
                             </div>
-                        ) : (
+                        ) : state.playerFinished ? (
+                            /* Player finished early view */
+                            <div className="space-y-4 py-8 text-center text-slate-900 dark:text-white">
+                                <div className="text-4xl text-emerald-500">🎉</div>
+                                <div className="text-xl font-bold">Ai terminat examenul!</div>
+                                <div className="text-sm text-slate-600 dark:text-slate-400">Te rugăm să aștepți până când host-ul închide sesiunea.</div>
+                            </div>
+                        ) : state.currentQuestion ? (
                             /* Player interactive view */
                             <QuestionPlayer
                                 question={state.currentQuestion}
@@ -622,9 +612,10 @@ export function LiveSessionPage() {
                                 deadlineUtc={state.deadlineUtc!}
                                 timeLimitSeconds={state.timeLimitSeconds}
                                 onSubmit={submitAnswer}
-                                ack={state.lastAnswerAck}
+                                ack={state.lastAck}
+                                onNextQuestion={fetchNextQuestion}
                             />
-                        )}
+                        ) : null}
                     </div>
                 )}
             </div>

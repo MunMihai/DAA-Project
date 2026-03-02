@@ -1,9 +1,9 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Quiz.AuthService.Models;
 
 namespace Quiz.AuthService.Services;
 
@@ -18,23 +18,23 @@ public sealed class JwtOptions
 
 public interface IJwtTokenService
 {
-    (string token, DateTimeOffset expiresAt) CreateToken(IdentityUser user, IEnumerable<string> roles);
+    (string token, DateTimeOffset expiresAt) CreateToken(ApplicationUser user, IEnumerable<string> roles);
 }
 
 public sealed class JwtTokenService(IOptions<JwtOptions> options) : IJwtTokenService
 {
     private readonly JwtOptions _opt = options.Value;
 
-    public (string token, DateTimeOffset expiresAt) CreateToken(IdentityUser user, IEnumerable<string> roles)
+    public (string token, DateTimeOffset expiresAt) CreateToken(ApplicationUser user, IEnumerable<string> roles)
     {
         var expiresAt = DateTimeOffset.UtcNow.AddMinutes(_opt.ExpiresMinutes);
 
         var claims = new List<Claim>
         {
-            new(JwtRegisteredClaimNames.Sub, user.Id),
-            new(JwtRegisteredClaimNames.Email, user.Email ?? ""),
-            new(ClaimTypes.NameIdentifier, user.Id),
-            new(ClaimTypes.Name, user.UserName ?? user.Email ?? "")
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(JwtRegisteredClaimNames.Email, user.Email?.ToString() ?? ""),
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.UserName?.ToString() ?? user.Email?.ToString() ?? "")
         };
 
         foreach (var role in roles)
@@ -55,3 +55,4 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : IJwtTokenSer
         return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
     }
 }
+

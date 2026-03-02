@@ -15,14 +15,25 @@ public sealed class RabbitBus(IConfiguration cfg, ILogger<RabbitBus> log)
 {
     private const string Exchange = "livequiz.events";
 
-    private ConnectionFactory CreateFactory() => new()
+    private ConnectionFactory CreateFactory()
     {
-        HostName = cfg["Rabbit:Host"] ?? "localhost",
-        Port = int.TryParse(cfg["Rabbit:Port"], out var p) ? p : 5672,
-        UserName = cfg["Rabbit:User"] ?? "guest",
-        Password = cfg["Rabbit:Pass"] ?? "guest",
-        AutomaticRecoveryEnabled = true
-    };
+        var factory = new ConnectionFactory { AutomaticRecoveryEnabled = true };
+        var connStr = cfg.GetConnectionString("rabbit");
+
+        if (!string.IsNullOrWhiteSpace(connStr))
+        {
+            factory.Uri = new Uri(connStr);
+        }
+        else
+        {
+            factory.HostName = cfg["Rabbit:Host"] ?? "localhost";
+            factory.Port = int.TryParse(cfg["Rabbit:Port"], out var p) ? p : 5672;
+            factory.UserName = cfg["Rabbit:User"] ?? "guest";
+            factory.Password = cfg["Rabbit:Pass"] ?? "guest";
+        }
+
+        return factory;
+    }
 
     public Task<IConnection> CreateConnectionAsync(CancellationToken ct = default) =>
         CreateFactory().CreateConnectionAsync(cancellationToken: ct);

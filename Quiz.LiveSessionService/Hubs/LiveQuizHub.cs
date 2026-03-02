@@ -53,14 +53,24 @@ public sealed class LiveQuizHub(
             return;
         }
 
-        var playerId = Context.ConnectionId;
+        var playerId = "usr_" + Uri.EscapeDataString(displayName.ToLowerInvariant());
+
         await store.AddPlayer(sessionCode, playerId, displayName);
-        await Groups.AddToGroupAsync(playerId, sessionCode);
+        await Groups.AddToGroupAsync(Context.ConnectionId, sessionCode);
+
+        // Map earliest joined user as Host if pending
+        var hostId = await store.GetHostId(sessionCode);
+        if (hostId == "__pending__")
+        {
+            await store.SetHostId(sessionCode, playerId);
+            log.LogInformation("Assigned Player {PlayerId} as Host for session {Code}", playerId, sessionCode);
+        }
 
         log.LogInformation("Player {PlayerId} ({Name}) joined session {Code}", playerId, displayName, sessionCode);
 
         // Store session code in connection context (for disconnect cleanup)
         Context.Items["sessionCode"] = sessionCode;
+        Context.Items["playerId"] = playerId;
 
         // Publish to RabbitMQ
         await bus.PublishAsync("player.joined", new
@@ -79,24 +89,27 @@ public sealed class LiveQuizHub(
         {
             var info = await store.GetSessionInfo(sessionCode);
             var snap = await store.GetPublicSnapshot(sessionCode);
-            var question = info?.CurrentIndex >= 0
-                ? await store.GetQuestion(sessionCode, info.CurrentIndex)
+            var playerIndex = await store.GetPlayerIndex(sessionCode, playerId);
+
+            var question = playerIndex >= 0 && info != null && playerIndex < info.TotalQuestions
+                ? await store.GetQuestion(sessionCode, playerIndex)
                 : null;
 
             await Clients.Caller.SendAsync("sessionStarted", new
             {
                 sessionCode,
                 totalQuestions = info?.TotalQuestions ?? 0,
-                quiz = snap
+                quiz = snap,
+                deadlineUtc = info?.SessionDeadline
             });
 
             if (question != null && info != null)
             {
                 await Clients.Caller.SendAsync("questionStarted", new
                 {
-                    index = info.CurrentIndex,
+                    index = playerIndex,
                     question,
-                    deadlineUtc = info.QuestionDeadline,
+                    deadlineUtc = info.SessionDeadline,
                     timeLimitSeconds = snap?.TimeLimitSeconds ?? 30
                 });
             }
@@ -108,7 +121,7 @@ public sealed class LiveQuizHub(
     public async Task StartSession(string sessionCode)
     {
         sessionCode = Sanitize(sessionCode);
-        var playerId = Context.ConnectionId;
+        var playerId = GetPlayerId();
 
         var hostId = await store.GetHostId(sessionCode);
         if (hostId != playerId)
@@ -152,7 +165,7 @@ public sealed class LiveQuizHub(
 
         await store.StoreQuizSnapshot(sessionCode, snap);
         await store.SetStatus(sessionCode, "running");
-        await store.SetCurrentIndex(sessionCode, 0, snap.TimeLimitSeconds);
+        await store.SetSessionDeadline(sessionCode, snap.TimeLimitSeconds);
 
         log.LogInformation("Session {Code} started — quiz {QuizId}, {Count} questions", sessionCode, quizId, snap.Questions.Count);
 
@@ -165,32 +178,38 @@ public sealed class LiveQuizHub(
             at = DateTimeOffset.UtcNow
         });
 
+        var sessionInfo = await store.GetSessionInfo(sessionCode);
+
         // Broadcast: session started
         var pubSnap = await store.GetPublicSnapshot(sessionCode);
         await Clients.Group(sessionCode).SendAsync("sessionStarted", new
         {
             sessionCode,
             totalQuestions = snap.Questions.Count,
-            quiz = pubSnap
+            quiz = pubSnap,
+            deadlineUtc = sessionInfo?.SessionDeadline
         });
 
-        // Broadcast: first question
-        await PushQuestion(sessionCode, 0, snap.TimeLimitSeconds);
+        // Push first question to everyone (since StartSession is called by Host, everyone is at Q0)
+        var q0 = await store.GetQuestion(sessionCode, 0);
+        if (q0 != null)
+        {
+            await Clients.Group(sessionCode).SendAsync("questionStarted", new
+            {
+                index = 0,
+                question = q0,
+                deadlineUtc = sessionInfo?.SessionDeadline,
+                timeLimitSeconds = snap.TimeLimitSeconds
+            });
+        }
     }
 
-    // ── Next question ─────────────────────────────────────────────────────────
-    /// <summary>Host advances to the next question.</summary>
-    public async Task NextQuestion(string sessionCode)
+    // ── Fetch Next Question (Individual) ──────────────────────────────────────
+    /// <summary>Player requests their next question in the individualized flow.</summary>
+    public async Task FetchNextQuestion(string sessionCode)
     {
         sessionCode = Sanitize(sessionCode);
-        var playerId = Context.ConnectionId;
-
-        var hostId = await store.GetHostId(sessionCode);
-        if (hostId != playerId)
-        {
-            await Clients.Caller.SendAsync("error", new { message = "Only the host can advance questions." });
-            return;
-        }
+        var playerId = GetPlayerId();
 
         var info = await store.GetSessionInfo(sessionCode);
         if (info is null || info.Status != "running")
@@ -199,41 +218,28 @@ public sealed class LiveQuizHub(
             return;
         }
 
-        var snap = await store.GetPublicSnapshot(sessionCode);
-        var timeLimitSeconds = snap?.TimeLimitSeconds ?? 30;
-
-        // Publish leaderboard for current question
-        var leaderboard = await BuildLeaderboard(sessionCode);
-        await Clients.Group(sessionCode).SendAsync("questionEnded", new
+        var playerIndex = await store.GetPlayerIndex(sessionCode, playerId);
+        
+        if (playerIndex >= info.TotalQuestions)
         {
-            index = info.CurrentIndex,
-            leaderboard
-        });
-
-        await bus.PublishAsync("question.ended", new
-        {
-            sessionCode,
-            questionIndex = info.CurrentIndex,
-            at = DateTimeOffset.UtcNow
-        });
-
-        var nextIndex = info.CurrentIndex + 1;
-        if (nextIndex >= info.TotalQuestions)
-        {
-            await EndSession(sessionCode);
+            // Player has finished the quiz. Handled by client.
+            await Clients.Caller.SendAsync("playerFinished");
             return;
         }
 
-        await store.SetCurrentIndex(sessionCode, nextIndex, timeLimitSeconds);
+        var snap = await store.GetPublicSnapshot(sessionCode);
+        var question = await store.GetQuestion(sessionCode, playerIndex);
 
-        await bus.PublishAsync("question.started", new
+        if (question != null)
         {
-            sessionCode,
-            questionIndex = nextIndex,
-            at = DateTimeOffset.UtcNow
-        });
-
-        await PushQuestion(sessionCode, nextIndex, timeLimitSeconds);
+            await Clients.Caller.SendAsync("questionStarted", new
+            {
+                index = playerIndex,
+                question,
+                deadlineUtc = info.SessionDeadline,
+                timeLimitSeconds = snap?.TimeLimitSeconds ?? 30
+            });
+        }
     }
 
     // ── Submit answer ─────────────────────────────────────────────────────────
@@ -241,7 +247,7 @@ public sealed class LiveQuizHub(
     public async Task SubmitAnswer(string sessionCode, int questionIndex, AnswerPayload payload)
     {
         sessionCode = Sanitize(sessionCode);
-        var playerId = Context.ConnectionId;
+        var playerId = GetPlayerId();
 
         var info = await store.GetSessionInfo(sessionCode);
         if (info is null || info.Status != "running")
@@ -250,14 +256,16 @@ public sealed class LiveQuizHub(
             return;
         }
 
-        if (questionIndex != info.CurrentIndex)
+        var playerIndex = await store.GetPlayerIndex(sessionCode, playerId);
+
+        if (questionIndex != playerIndex)
         {
             await Clients.Caller.SendAsync("error", new { message = "Question index mismatch." });
             return;
         }
 
         // Check deadline
-        if (DateTimeOffset.UtcNow > info.QuestionDeadline)
+        if (DateTimeOffset.UtcNow > info.SessionDeadline)
         {
             await Clients.Caller.SendAsync("answerAck", new
             {
@@ -271,6 +279,12 @@ public sealed class LiveQuizHub(
         }
 
         var result = await store.SaveAndCheckAnswer(sessionCode, questionIndex, playerId, payload);
+        
+        // Only increment pointer if it wasn't already answered and not expired
+        if (!result.AlreadyAnswered) 
+        {
+            await store.IncrementPlayerIndex(sessionCode, playerId);
+        }
 
         var scores = await store.GetScores(sessionCode);
 
@@ -355,28 +369,33 @@ public sealed class LiveQuizHub(
         var snap = await store.GetPublicSnapshot(sessionCode);
         var leaderboard = await BuildLeaderboard(sessionCode);
         var players = await store.GetPlayers(sessionCode);
+        
+        var playerId = GetPlayerId();
+        var playerIndex = await store.GetPlayerIndex(sessionCode, playerId);
 
         QuestionPublicSnapshot? currentQuestion = null;
-        if (info.CurrentIndex >= 0)
-            currentQuestion = await store.GetQuestion(sessionCode, info.CurrentIndex);
+        if (playerIndex >= 0 && playerIndex < info.TotalQuestions)
+            currentQuestion = await store.GetQuestion(sessionCode, playerIndex);
 
         await Clients.Caller.SendAsync("sessionState", new
         {
             status = info.Status,
-            currentIndex = info.CurrentIndex,
+            currentIndex = playerIndex,
             totalQuestions = info.TotalQuestions,
             quiz = snap,
             currentQuestion,
-            deadlineUtc = info.QuestionDeadline,
+            deadlineUtc = info.SessionDeadline,
             leaderboard,
-            playerCount = players.Count
+            players = players.Select(p => new { id = p.Key, displayName = p.Value }),
+            playerCount = players.Count,
+            playerFinished = info.TotalQuestions > 0 && playerIndex >= info.TotalQuestions
         });
     }
 
     // ── Disconnect ────────────────────────────────────────────────────────────
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        var playerId = Context.ConnectionId;
+        var playerId = GetPlayerId();
 
         if (Context.Items.TryGetValue("sessionCode", out var codeObj) && codeObj is string sessionCode)
         {
@@ -397,18 +416,11 @@ public sealed class LiveQuizHub(
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-    private async Task PushQuestion(string sessionCode, int index, int timeLimitSeconds)
+    private string GetPlayerId()
     {
-        var question = await store.GetQuestion(sessionCode, index);
-        var info = await store.GetSessionInfo(sessionCode);
-
-        await Clients.Group(sessionCode).SendAsync("questionStarted", new
-        {
-            index,
-            question,
-            deadlineUtc = info?.QuestionDeadline ?? DateTimeOffset.UtcNow.AddSeconds(timeLimitSeconds),
-            timeLimitSeconds
-        });
+        if (Context.Items.TryGetValue("playerId", out var id) && id is string s)
+            return s;
+        return Context.ConnectionId;
     }
 
     private async Task BroadcastLobbyUpdate(string sessionCode)

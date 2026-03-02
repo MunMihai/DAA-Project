@@ -27,6 +27,7 @@ public sealed class LiveSessionStateStore(IConnectionMultiplexer mux)
     private static string CorrectK(string code) => $"ls:quiz:correct:{code}";
     private static string AnsK(string code, int idx) => $"ls:answers:{code}:{idx}";
     private static string AnsweredK(string code, int idx) => $"ls:answered:{code}:{idx}";
+    private static string PlayerIdxK(string code) => $"ls:playerIndex:{code}";
     private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(6);
 
     // ── Session lifecycle ─────────────────────────────────────────────────────
@@ -39,10 +40,9 @@ public sealed class LiveSessionStateStore(IConnectionMultiplexer mux)
         {
             new HashEntry("quizId", quizId),
             new HashEntry("status", "lobby"),
-            new HashEntry("currentIndex", -1),
             new HashEntry("hostId", hostConnectionId),
             new HashEntry("createdAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
-            new HashEntry("questionDeadline", 0L),
+            new HashEntry("sessionDeadline", 0L),
             new HashEntry("totalQuestions", 0),
         });
         await RefreshTtl(code);
@@ -56,6 +56,7 @@ public sealed class LiveSessionStateStore(IConnectionMultiplexer mux)
         _ = batch.KeyExpireAsync(ScK(code), SessionTtl);
         _ = batch.KeyExpireAsync(SnapK(code), SessionTtl);
         _ = batch.KeyExpireAsync(CorrectK(code), SessionTtl);
+        _ = batch.KeyExpireAsync(PlayerIdxK(code), SessionTtl);
         batch.Execute();
         await Task.CompletedTask;
     }
@@ -70,10 +71,9 @@ public sealed class LiveSessionStateStore(IConnectionMultiplexer mux)
         {
             QuizId = d.GetValueOrDefault("quizId", ""),
             Status = d.GetValueOrDefault("status", "lobby"),
-            CurrentIndex = int.TryParse(d.GetValueOrDefault("currentIndex"), out var ci) ? ci : -1,
             HostId = d.GetValueOrDefault("hostId", ""),
             TotalQuestions = int.TryParse(d.GetValueOrDefault("totalQuestions"), out var tq) ? tq : 0,
-            QuestionDeadline = long.TryParse(d.GetValueOrDefault("questionDeadline"), out var dl)
+            SessionDeadline = long.TryParse(d.GetValueOrDefault("sessionDeadline"), out var dl)
                 ? DateTimeOffset.FromUnixTimeSeconds(dl) : DateTimeOffset.MinValue
         };
     }
@@ -90,6 +90,9 @@ public sealed class LiveSessionStateStore(IConnectionMultiplexer mux)
         return rv.IsNullOrEmpty ? null : rv.ToString();
     }
 
+    public Task SetHostId(string code, string hostId) =>
+        Db.HashSetAsync(SK(code), "hostId", hostId);
+
     public Task SetStatus(string code, string status) =>
         Db.HashSetAsync(SK(code), "status", status);
 
@@ -99,20 +102,22 @@ public sealed class LiveSessionStateStore(IConnectionMultiplexer mux)
         return rv.IsNullOrEmpty ? "unknown" : rv.ToString();
     }
 
-    public async Task<int> GetCurrentIndex(string code)
+    public async Task<int> GetPlayerIndex(string code, string playerId)
     {
-        var rv = await Db.HashGetAsync(SK(code), "currentIndex");
-        return int.TryParse(rv.ToString(), out var i) ? i : -1;
+        var rv = await Db.HashGetAsync(PlayerIdxK(code), playerId);
+        return int.TryParse(rv.ToString(), out var i) ? i : 0; // Default index is 0
     }
 
-    public async Task SetCurrentIndex(string code, int index, int timeLimitSeconds)
+    public Task SetPlayerIndex(string code, string playerId, int index) =>
+        Db.HashSetAsync(PlayerIdxK(code), playerId, index);
+
+    public Task IncrementPlayerIndex(string code, string playerId) =>
+        Db.HashIncrementAsync(PlayerIdxK(code), playerId, 1);
+
+    public async Task SetSessionDeadline(string code, int timeLimitSeconds)
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(timeLimitSeconds).ToUnixTimeSeconds();
-        await Db.HashSetAsync(SK(code), new[]
-        {
-            new HashEntry("currentIndex", index),
-            new HashEntry("questionDeadline", deadline)
-        });
+        await Db.HashSetAsync(SK(code), "sessionDeadline", deadline);
     }
 
     // ── Players ───────────────────────────────────────────────────────────────
@@ -125,8 +130,10 @@ public sealed class LiveSessionStateStore(IConnectionMultiplexer mux)
 
     public async Task RemovePlayer(string code, string playerId)
     {
-        await Db.HashDeleteAsync(PK(code), playerId);
-        // keep score for final leaderboard
+        // Do not delete from PK or PlayerIdxK so players can reconnect and resume progress after refresh
+        // await Db.HashDeleteAsync(PK(code), playerId);
+        // await Db.HashDeleteAsync(PlayerIdxK(code), playerId);
+        await Task.CompletedTask;
     }
 
     public async Task<Dictionary<string, string>> GetPlayers(string code)
@@ -321,10 +328,9 @@ public sealed class SessionInfo
 {
     public string QuizId { get; set; } = "";
     public string Status { get; set; } = "lobby";
-    public int CurrentIndex { get; set; } = -1;
     public string HostId { get; set; } = "";
     public int TotalQuestions { get; set; }
-    public DateTimeOffset QuestionDeadline { get; set; }
+    public DateTimeOffset SessionDeadline { get; set; }
 }
 
 public sealed class LeaderboardEntry

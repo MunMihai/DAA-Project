@@ -69,7 +69,7 @@ public sealed class LiveSessionsController(
             sessionCode = code,
             quizId = info.QuizId,
             status = info.Status,
-            currentIndex = info.CurrentIndex,
+            sessionDeadline = info.SessionDeadline,
             totalQuestions = info.TotalQuestions,
             playerCount = players.Count,
             leaderboard = leaderboard.Values

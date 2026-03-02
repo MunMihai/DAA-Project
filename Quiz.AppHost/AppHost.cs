@@ -1,22 +1,24 @@
+using Aspire.Hosting;
+
 var builder = DistributedApplication.CreateBuilder(args);
 
 // ── Infrastructure ────────────────────────────────────────────────────────────
-var postgres = builder.AddPostgres("identity-db", port: 6000)
-    .WithImage("postgres", "16-alpine")
-    .WithLifetime(ContainerLifetime.Persistent)
-    .WithContainerName("quiz-identity-db")
-    .AddDatabase("identitydb");
-
 var rabbit = builder.AddRabbitMQ("rabbit", port: 6003)
-    .WithImage("rabbitmq", "3-management")
+    .WithManagementPlugin()
     .WithLifetime(ContainerLifetime.Persistent)
     .WithContainerName("quiz-rabbit");
 
-var mongo = builder.AddMongoDB("quiz-mongo", port: 6001)
+var mongo = builder.AddMongoDB("quiz-mongo", port: 6001,
+        userName: builder.AddParameter("mongo-user", "quiz_root"),
+        password: builder.AddParameter("mongo-pass", "quiz_pass", secret: true))
     .WithImage("mongo", "7")
     .WithLifetime(ContainerLifetime.Persistent)
     .WithContainerName("quiz-mongo")
-    .AddDatabase("quizdb");
+    .WithVolume("quiz-mongo-data", "/data/db");
+
+// Databases (resurse separate -> connection string per DB)
+var quizDb = mongo.AddDatabase("quizdb");
+var authDb = mongo.AddDatabase("quizauthdb");
 
 var redis = builder.AddRedis("quiz-redis", port: 6002)
     .WithImage("redis", "7-alpine")
@@ -25,25 +27,25 @@ var redis = builder.AddRedis("quiz-redis", port: 6002)
 
 // ── Auth Service ──────────────────────────────────────────────────────────────
 var authService = builder.AddProject<Projects.Quiz_AuthService>("authservice")
-    .WithReference(postgres)
+    .WithReference(authDb)      // IMPORTANT: referință la DB-ul auth
     .WithReference(rabbit)
-    .WaitFor(postgres)
+    .WaitFor(authDb)
     .WaitFor(rabbit);
 
 // ── Quiz Service ──────────────────────────────────────────────────────────────
 var quizService = builder.AddProject<Projects.Quiz_QuizService>("quizservice")
-    .WithReference(mongo)
+    .WithReference(quizDb)      // IMPORTANT: referință la DB-ul quiz
     .WithReference(redis)
     .WithReference(rabbit)
-    .WaitFor(mongo)
+    .WaitFor(quizDb)
     .WaitFor(redis)
     .WaitFor(rabbit);
 
 // ── Live Session Service ──────────────────────────────────────────────────────
 var liveSessionService = builder.AddProject<Projects.Quiz_LiveSessionService>("livesessionservice")
-    .WithReference(redis)          // state store (Redis)
-    .WithReference(rabbit)         // event bus (RabbitMQ)
-    .WithReference(quizService)    // HTTP client for quiz data
+    .WithReference(redis)
+    .WithReference(rabbit)
+    .WithReference(quizService)
     .WaitFor(redis)
     .WaitFor(rabbit)
     .WaitFor(quizService);
@@ -52,7 +54,7 @@ var liveSessionService = builder.AddProject<Projects.Quiz_LiveSessionService>("l
 var apiGateway = builder.AddProject<Projects.Quiz_ApiGateway>("apigateway")
     .WithReference(authService)
     .WithReference(quizService)
-    .WithReference(liveSessionService)   // proxy live endpoints
+    .WithReference(liveSessionService)
     .WaitFor(authService)
     .WaitFor(quizService)
     .WaitFor(liveSessionService);

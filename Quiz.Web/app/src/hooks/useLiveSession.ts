@@ -45,6 +45,7 @@ export type LiveState = {
     timeLimitSeconds: number;
     leaderboard: LeaderboardEntry[];
     lastAck: AnswerAck | null;
+    playerFinished: boolean;
 };
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -69,6 +70,7 @@ export function useLiveSession(
         timeLimitSeconds: 30,
         leaderboard: [],
         lastAck: null,
+        playerFinished: false,
     });
 
     const patch = useCallback((p: Partial<LiveState>) =>
@@ -88,8 +90,14 @@ export function useLiveSession(
         conn.on("lobbyUpdate", (d: { players: Player[] }) =>
             patch({ players: d.players }));
 
-        conn.on("sessionStarted", (d: { totalQuestions: number }) =>
-            patch({ status: "running", totalQuestions: d.totalQuestions, lastAck: null }));
+        conn.on("sessionStarted", (d: { totalQuestions: number, deadlineUtc?: string }) =>
+            patch({
+                status: "running",
+                totalQuestions: d.totalQuestions,
+                lastAck: null,
+                playerFinished: false,
+                deadlineUtc: d.deadlineUtc ? new Date(d.deadlineUtc) : null
+            }));
 
         conn.on("questionStarted", (d: {
             index: number;
@@ -108,6 +116,9 @@ export function useLiveSession(
         conn.on("questionEnded", (d: { leaderboard: LeaderboardEntry[] }) =>
             patch({ leaderboard: d.leaderboard }));
 
+        conn.on("playerFinished", () =>
+            patch({ playerFinished: true }));
+
         conn.on("answerAck", (ack: AnswerAck) =>
             patch({ lastAck: ack }));
 
@@ -117,15 +128,21 @@ export function useLiveSession(
         conn.on("sessionEnded", (d: { leaderboard: LeaderboardEntry[] }) =>
             patch({ status: "ended", leaderboard: d.leaderboard, currentQuestion: null }));
 
-        conn.on("sessionState", (d: any) => patch({
-            status: d.status === "running" ? "running" : d.status === "ended" ? "ended" : "lobby",
-            totalQuestions: d.totalQuestions ?? 0,
-            questionIndex: d.currentIndex ?? -1,
-            currentQuestion: d.currentQuestion ?? null,
-            deadlineUtc: d.deadlineUtc ? new Date(d.deadlineUtc) : null,
-            leaderboard: d.leaderboard ?? [],
-            players: d.players ?? [],
-        }));
+        conn.on("sessionState", (d: any) => {
+            const isRunning = d.status === "running";
+            const isEnded = d.status === "ended";
+
+            patch({
+                status: isRunning ? "running" : isEnded ? "ended" : "lobby",
+                totalQuestions: d.totalQuestions ?? 0,
+                questionIndex: d.currentIndex ?? -1,
+                currentQuestion: d.currentQuestion ?? null,
+                deadlineUtc: d.deadlineUtc ? new Date(d.deadlineUtc) : null,
+                leaderboard: d.leaderboard ?? [],
+                players: d.players ?? [],
+                playerFinished: !!d.playerFinished,
+            });
+        });
 
         conn.on("error", (d: { message: string }) =>
             patch({ error: d.message }));
@@ -133,16 +150,16 @@ export function useLiveSession(
         conn.onreconnecting(() => patch({ status: "connecting", error: null }));
         conn.onreconnected(async () => {
             patch({ error: null });
-            await conn.invoke("GetSessionState", sessionCode).catch(() => {});
+            await conn.invoke("GetSessionState", sessionCode).catch(() => { });
         });
         conn.onclose(() => patch({ status: "error", error: "Conexiunea a fost închisă." }));
 
         const start = async () => {
-            patch({ status: "connecting" });
+            patch({ status: "connecting", error: null });
             try {
                 await conn.start();
                 await conn.invoke("Join", sessionCode, displayName);
-                patch({ status: "lobby", error: null });
+                await conn.invoke("GetSessionState", sessionCode);
             } catch (err: any) {
                 patch({ status: "error", error: err?.message ?? "Conexiune eșuată." });
             }
@@ -157,15 +174,15 @@ export function useLiveSession(
     const startSession = useCallback(() =>
         connRef.current?.invoke("StartSession", sessionCode), [sessionCode]);
 
-    const nextQuestion = useCallback(() =>
-        connRef.current?.invoke("NextQuestion", sessionCode), [sessionCode]);
+    const fetchNextQuestion = useCallback(() =>
+        connRef.current?.invoke("FetchNextQuestion", sessionCode), [sessionCode]);
 
     const submitAnswer = useCallback((payload: AnswerPayload) =>
-            connRef.current?.invoke("SubmitAnswer", sessionCode, state.questionIndex, payload),
+        connRef.current?.invoke("SubmitAnswer", sessionCode, state.questionIndex, payload),
         [sessionCode, state.questionIndex]);
 
     const endSession = useCallback(() =>
         connRef.current?.invoke("EndSession", sessionCode), [sessionCode]);
 
-    return { state, startSession, nextQuestion, submitAnswer, endSession };
+    return { state, startSession, fetchNextQuestion, submitAnswer, endSession };
 }

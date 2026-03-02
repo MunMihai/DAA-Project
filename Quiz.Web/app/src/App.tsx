@@ -32,13 +32,13 @@ import { AdminQuizzesPage } from "./pages/admin/AdminQuizzesPage";
 import { AdminQuizEditorPage } from "./pages/admin/AdminQuizEditorPage";
 
 // Optional: guard rute admin
-import { useAuth } from "./auth/AuthContext";
 import { QuizzesPage } from "./pages/app/QuizzesPage.tsx";
 import { JoinLivePage } from "./pages/app/JoinLivePage.tsx";
 import { AdminLivePage } from "./pages/admin/AdminLivePage.tsx";
 import { ContestsPage } from "./pages/app/ContestsPage.tsx";
 import { SubmissionsPage } from "./pages/app/SubmissionsPage.tsx";
 import { applyTheme, getInitialTheme } from "./theme.ts";
+import { useAuth } from "./auth/AuthContext.tsx";
 
 function AdminRoute() {
     const { isAdmin, isReady } = useAuth();
@@ -71,20 +71,20 @@ export default function App() {
                     <Route path="/app/live/join/:code" element={<JoinLivePage />} />
 
                     {/* Live — admin/profesor */}
-                    {/*<Route element={<AdminRoute />}>*/}
-                    <Route path="/app/live/host" element={<AdminLivePage />} />
-                    <Route path="/app/live/host/:code" element={<AdminLivePage />} />
-                    {/*</Route>*/}
+                    <Route element={<AdminRoute />}>
+                        <Route path="/app/live/host" element={<AdminLivePage />} />
+                        <Route path="/app/live/host/:code" element={<AdminLivePage />} />
+                    </Route>
 
                     {/* Alte pagini */}
                     <Route path="/app/contests" element={<ContestsPage />} />
                     <Route path="/app/submissions" element={<SubmissionsPage />} />
 
                     {/* Admin */}
-                    {/*<Route element={<AdminRoute />}>*/}
-                    <Route path="/app/admin/quizzes" element={<AdminQuizzesPage />} />
-                    <Route path="/app/admin/quizzes/:id" element={<AdminQuizEditorPage />} />
-                    {/*</Route>*/}
+                    <Route element={<AdminRoute />}>
+                        <Route path="/app/admin/quizzes" element={<AdminQuizzesPage />} />
+                        <Route path="/app/admin/quizzes/:id" element={<AdminQuizEditorPage />} />
+                    </Route>
 
                 </Route>
             </Route>

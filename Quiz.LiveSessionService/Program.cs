@@ -17,7 +17,7 @@ builder.Services.AddSignalR(opts =>
 });
 
 // Redis (StackExchange direct — pentru state store)
-builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
 {
     var connStr = builder.Configuration.GetConnectionString("quiz-redis")
                   ?? builder.Configuration["Redis:ConnectionString"]
@@ -35,7 +35,7 @@ builder.Services.AddSingleton<RabbitBus>();
 builder.Services.AddHostedService<RabbitEventConsumer>();
 
 // HTTP client spre QuizService
-builder.Services.AddHttpClient<QuizServiceClient>((sp, client) =>
+builder.Services.AddHttpClient<QuizServiceClient>((_, client) =>
 {
     var baseUrl = builder.Configuration["QuizService:BaseUrl"] ?? "http://localhost:5002";
     client.BaseAddress = new Uri(baseUrl);
@@ -46,20 +46,27 @@ builder.Services.AddHttpClient<QuizServiceClient>((sp, client) =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// CORS (frontend)
+// CORS (frontend) - must support credentials for SignalR
 builder.Services.AddCors(opt =>
-    opt.AddPolicy("web", p =>
-        p.WithOrigins(
-                builder.Configuration["Cors:Origin"] ?? "http://localhost:4000",
-                "http://localhost:4040")
+{
+    // General API policy - allows any origin
+    opt.AddPolicy("api", p =>
+        p.AllowAnyOrigin()
+            .AllowAnyHeader()
+            .AllowAnyMethod());
+    
+    // SignalR-specific policy - requires credentials support
+    opt.AddPolicy("signalr", p =>
+        p.SetIsOriginAllowed(_ => true)
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials())
-);
+            .AllowCredentials());
+});
 
 var app = builder.Build();
 
-app.UseCors("web");
+// Apply CORS to controllers
+app.UseCors("api");
 
 if (app.Environment.IsDevelopment())
 {
@@ -68,7 +75,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapControllers();
-app.MapHub<LiveQuizHub>("/hubs/live-quiz");
+
+// SignalR Hub with credentials CORS policy
+app.MapHub<LiveQuizHub>("/hubs/live-quiz").RequireCors("signalr");
+
 app.MapGet("/healthz", () => Results.Ok(new { ok = true, service = "LiveSessionService" }));
 
 app.Run();

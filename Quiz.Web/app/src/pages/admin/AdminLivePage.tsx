@@ -28,16 +28,16 @@ function Countdown({ deadline, total }: { deadline: Date; total: number }) {
             <div className="relative h-14 w-14 shrink-0">
                 <svg className="h-14 w-14 -rotate-90" viewBox="0 0 56 56">
                     <circle cx="28" cy="28" r="24" fill="none" stroke="currentColor"
-                            strokeWidth="4" className="text-slate-200 dark:text-slate-700" />
+                        strokeWidth="4" className="text-slate-200 dark:text-slate-700" />
                     <circle cx="28" cy="28" r="24" fill="none"
-                            strokeWidth="4"
-                            strokeLinecap="round"
-                            strokeDasharray={`${2 * Math.PI * 24}`}
-                            strokeDashoffset={`${2 * Math.PI * 24 * (1 - pct / 100)}`}
-                            className={cn(
-                                "transition-all duration-500",
-                                danger ? "stroke-red-500" : warn ? "stroke-amber-500" : "stroke-emerald-500"
-                            )} />
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                        strokeDasharray={`${2 * Math.PI * 24}`}
+                        strokeDashoffset={`${2 * Math.PI * 24 * (1 - pct / 100)}`}
+                        className={cn(
+                            "transition-all duration-500",
+                            danger ? "stroke-red-500" : warn ? "stroke-amber-500" : "stroke-emerald-500"
+                        )} />
                 </svg>
                 <span className={cn(
                     "absolute inset-0 flex items-center justify-center text-sm font-black",
@@ -95,7 +95,7 @@ function SessionCodeDisplay({ code }: { code: string }) {
                 <div className="mt-1 font-mono text-5xl font-black tracking-widest text-white">{code}</div>
             </div>
             <button onClick={copy}
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-200">
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-200">
                 {copied ? "✓ Copiat!" : "Copiază codul"}
             </button>
             <p className="text-center text-xs text-slate-500 dark:text-slate-400">
@@ -247,7 +247,7 @@ export function AdminLivePage() {
     const [createErr, setCreateErr] = useState<string | null>(null);
     const [showEndConfirm, setShowEndConfirm] = useState(false);
 
-    const { state, startSession, nextQuestion, endSession } = useLiveSession(
+    const { state, startSession, endSession } = useLiveSession(
         sessionCode,
         displayName,
         phase === "lobby" || phase === "session",
@@ -322,7 +322,7 @@ export function AdminLivePage() {
                 </div>
 
                 <button onClick={() => { setPhase("pick"); setSessionCode(""); nav("/app/live/host"); }}
-                        className="w-full rounded-2xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 dark:bg-indigo-500">
+                    className="w-full rounded-2xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 dark:bg-indigo-500">
                     Lansează altă sesiune
                 </button>
             </div>
@@ -378,7 +378,7 @@ export function AdminLivePage() {
                             <div className="flex flex-wrap gap-2">
                                 {state.players.map(p => (
                                     <span key={p.id}
-                                          className="flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
+                                        className="flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
                                         <span className="h-2 w-2 rounded-full bg-emerald-500" />
                                         {p.displayName}
                                     </span>
@@ -400,7 +400,6 @@ export function AdminLivePage() {
     }
 
     // ── Running ───────────────────────────────────────────────────────────────
-    const isLast = state.questionIndex >= state.totalQuestions - 1;
 
     return (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_300px]">
@@ -420,12 +419,6 @@ export function AdminLivePage() {
                         </div>
                         <div className="flex gap-2">
                             <button
-                                onClick={nextQuestion}
-                                className="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700 dark:bg-indigo-500 transition"
-                            >
-                                {isLast ? "Finalizează ✓" : `Întrebarea ${state.questionIndex + 2} →`}
-                            </button>
-                            <button
                                 onClick={() => setShowEndConfirm(true)}
                                 className="rounded-2xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-300 transition"
                             >
@@ -442,7 +435,7 @@ export function AdminLivePage() {
                         </div>
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                             <div className="h-1.5 rounded-full bg-indigo-500 transition-all duration-500"
-                                 style={{ width: `${((state.questionIndex + 1) / Math.max(1, state.totalQuestions)) * 100}%` }} />
+                                style={{ width: `${((state.questionIndex + 1) / Math.max(1, state.totalQuestions)) * 100}%` }} />
                         </div>
                     </div>
                 </div>
@@ -473,7 +466,7 @@ export function AdminLivePage() {
                     <div className="flex flex-wrap gap-2">
                         {state.players.map(p => (
                             <span key={p.id}
-                                  className="flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                className="flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                                 {p.displayName}
                             </span>
@@ -500,11 +493,11 @@ export function AdminLivePage() {
                         </p>
                         <div className="mt-5 flex gap-3">
                             <button onClick={() => setShowEndConfirm(false)}
-                                    className="flex-1 rounded-2xl border border-slate-200 bg-white py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-200">
+                                className="flex-1 rounded-2xl border border-slate-200 bg-white py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-200">
                                 Anulează
                             </button>
                             <button onClick={handleEnd}
-                                    className="flex-1 rounded-2xl bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700">
+                                className="flex-1 rounded-2xl bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700">
                                 Da, oprește
                             </button>
                         </div>

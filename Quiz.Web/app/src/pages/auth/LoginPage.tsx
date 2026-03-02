@@ -2,32 +2,61 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext.tsx";
 import { AuthShell } from "../../components/AuthShell.tsx";
+import { toast } from "react-toastify";
+import { useApi } from "../../api/axios.tsx";
 
 export function LoginPage() {
     const { login } = useAuth();
     const navigate = useNavigate();
+    const api = useApi();
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showPw, setShowPw] = useState(false);
 
+    const [emailStr, setEmailStr] = useState("");
+    const [passwordStr, setPasswordStr] = useState("");
+
+    const [seeding, setSeeding] = useState(false);
+
+    const handleRunSeed = async () => {
+        setSeeding(true);
+        try {
+            const res = await api.post("/identity/auth/run-seed");
+            toast.success(res.data.message || "Baza de date a fost populată cu succes!");
+        } catch (err) {
+            const error = err as any;
+            toast.error(error?.response?.data?.message || "Eroare la rularea seed-ului.");
+        } finally {
+            setSeeding(false);
+        }
+    };
+
+    const handleAutocomplete = (role: string) => {
+        setEmailStr(`${role.toLowerCase()}@exemplu.md`);
+        setPasswordStr("Password123!");
+    };
+
     const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setError(null);
 
-        const form = e.currentTarget;
-        const formData = new FormData(form);
+        const email = emailStr.trim();
+        const password = passwordStr.trim();
 
-        const email = String(formData.get("email") ?? "").trim();
-        const password = String(formData.get("password") ?? "").trim();
+        if (!email || !password) {
+            setError("Email și parola sunt obligatorii.");
+            return;
+        }
 
         setLoading(true);
         try {
             await login(email, password);
             navigate("/app");
-        } catch (err: any) {
+        } catch (err) {
+            const error = err as any;
             setError(
-                err?.response?.data?.message ??
+                error?.response?.data?.message ??
                 "Email sau parolă greșită. Încearcă din nou."
             );
         } finally {
@@ -41,6 +70,24 @@ export function LoginPage() {
             subtitle="Intră în cont pentru a continua quizurile și concursurile."
         >
             <form onSubmit={onSubmit} className="space-y-4">
+                <div className="flex justify-between items-center mb-4">
+                    <span className="text-sm text-slate-500 font-medium">Bază de date:</span>
+                    <button
+                        type="button"
+                        onClick={handleRunSeed}
+                        disabled={seeding}
+                        className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 disabled:opacity-50 transition-colors"
+                    >
+                        {seeding ? "Se populează..." : "▶ Run Seed"}
+                    </button>
+                </div>
+
+                <div className="flex gap-2 mb-4 justify-center flex-wrap">
+                    <button type="button" onClick={() => handleAutocomplete("Admin")} className="text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Auto Admin</button>
+                    <button type="button" onClick={() => handleAutocomplete("Teacher")} className="text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Auto Teacher</button>
+                    <button type="button" onClick={() => handleAutocomplete("Student")} className="text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Auto Student</button>
+                </div>
+
                 <div>
                     <label className="mb-1 block text-sm font-medium text-slate-800 dark:text-slate-200">
                         Email
@@ -49,6 +96,8 @@ export function LoginPage() {
                         name="email"
                         type="email"
                         required
+                        value={emailStr}
+                        onChange={(e) => setEmailStr(e.target.value)}
                         className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-indigo-500/40 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-100"
                         placeholder="student@exemplu.md"
                         autoComplete="email"
@@ -64,6 +113,8 @@ export function LoginPage() {
                             name="password"
                             type={showPw ? "text" : "password"}
                             required
+                            value={passwordStr}
+                            onChange={(e) => setPasswordStr(e.target.value)}
                             className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-indigo-500/40 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-100"
                             placeholder="••••••••"
                             autoComplete="current-password"

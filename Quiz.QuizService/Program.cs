@@ -29,7 +29,18 @@ builder.Services.AddStackExchangeRedisCache(opt =>
 });
 builder.Services.AddSingleton<RedisJsonCache>();
 
+builder.Services.AddCors(opt =>
+{
+    opt.AddPolicy("web", p =>
+        p.SetIsOriginAllowed(_ => true)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials());
+});
+
 var app = builder.Build();
+
+app.UseCors("web");
 
 app.UseSwagger();
 app.UseSwaggerUI();
@@ -41,5 +52,7 @@ using (var scope = app.Services.CreateScope())
     var ctx = scope.ServiceProvider.GetRequiredService<MongoContext>();
     await MongoIndexes.EnsureAsync(ctx);
 }
+
+app.MapGet("/healthz", () => Results.Ok(new { ok = true, service = "QuizService" }));
 
 app.Run();
