@@ -3,52 +3,11 @@ import { useNavigate, useParams } from "react-router-dom";
 import { quizApi, type Quiz } from "../../api/quizApi";
 import { liveSessionApi } from "../../api/liveSessionApi";
 import { useApi } from "../../api/axios";
-import { useLiveSession, type LeaderboardEntry, type QuizQuestion } from "../../hooks/useLiveSession";
+import { useLiveSession, type LeaderboardEntry } from "../../hooks/useLiveSession";
+import { toastApiError } from "../../utils/toastError";
 
 function cn(...xs: (string | false | null | undefined)[]) {
     return xs.filter(Boolean).join(" ");
-}
-
-// ── Countdown ─────────────────────────────────────────────────────────────────
-function Countdown({ deadline, total }: { deadline: Date; total: number }) {
-    const [left, setLeft] = useState(0);
-    useEffect(() => {
-        const t = setInterval(() => {
-            setLeft(Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / 1000)));
-        }, 200);
-        return () => clearInterval(t);
-    }, [deadline]);
-
-    const pct = total > 0 ? (left / total) * 100 : 0;
-    const danger = pct < 25;
-    const warn = pct < 50;
-
-    return (
-        <div className="flex items-center gap-3">
-            <div className="relative h-14 w-14 shrink-0">
-                <svg className="h-14 w-14 -rotate-90" viewBox="0 0 56 56">
-                    <circle cx="28" cy="28" r="24" fill="none" stroke="currentColor"
-                        strokeWidth="4" className="text-slate-200 dark:text-slate-700" />
-                    <circle cx="28" cy="28" r="24" fill="none"
-                        strokeWidth="4"
-                        strokeLinecap="round"
-                        strokeDasharray={`${2 * Math.PI * 24}`}
-                        strokeDashoffset={`${2 * Math.PI * 24 * (1 - pct / 100)}`}
-                        className={cn(
-                            "transition-all duration-500",
-                            danger ? "stroke-red-500" : warn ? "stroke-amber-500" : "stroke-emerald-500"
-                        )} />
-                </svg>
-                <span className={cn(
-                    "absolute inset-0 flex items-center justify-center text-sm font-black",
-                    danger ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-200"
-                )}>
-                    {left}
-                </span>
-            </div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">secunde<br />rămase</div>
-        </div>
-    );
 }
 
 // ── Leaderboard sidebar ───────────────────────────────────────────────────────
@@ -101,50 +60,6 @@ function SessionCodeDisplay({ code }: { code: string }) {
             <p className="text-center text-xs text-slate-500 dark:text-slate-400">
                 Studenții accesează <span className="font-semibold text-slate-700 dark:text-slate-200">/app/live</span> și introduc codul
             </p>
-        </div>
-    );
-}
-
-// ── Question view (host sees it without correct answers) ──────────────────────
-function QuestionDisplay({ q, index, total }: { q: QuizQuestion; index: number; total: number }) {
-    const typeLabel = ["Adevărat/Fals", "Alegere unică", "Alegere multiplă", "Răspuns text"][q.type];
-    return (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
-                    {typeLabel}
-                </span>
-                <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                    Întrebarea {index + 1} / {total} • {q.points} {q.points === 1 ? "punct" : "puncte"}
-                </span>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-base font-medium leading-relaxed text-slate-900 dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-100">
-                {q.prompt}
-            </div>
-
-            {q.options.length > 0 && (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {q.options.map((o, oi) => (
-                        <div key={o.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:border-white/10 dark:bg-slate-900/40 dark:text-slate-300">
-                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                                {String.fromCharCode(65 + oi)}
-                            </span>
-                            {o.text}
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {q.type === 0 && (
-                <div className="flex gap-3">
-                    {["Adevărat", "Fals"].map(l => (
-                        <div key={l} className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700 dark:border-white/10 dark:bg-slate-900/40 dark:text-slate-300">
-                            {l}
-                        </div>
-                    ))}
-                </div>
-            )}
         </div>
     );
 }
@@ -251,6 +166,7 @@ export function AdminLivePage() {
         sessionCode,
         displayName,
         phase === "lobby" || phase === "session",
+        "host",
     );
 
     // Sync phase with session status from hub
@@ -269,6 +185,7 @@ export function AdminLivePage() {
             nav(`/app/live/host/${res.sessionCode}`, { replace: true });
         } catch (e: any) {
             setCreateErr(e?.response?.data?.message ?? "Nu pot crea sesiunea.");
+            toastApiError(e, "Nu pot crea sesiunea.");
         } finally {
             setCreating(false);
         }
@@ -298,6 +215,23 @@ export function AdminLivePage() {
                 ) : (
                     <PickQuizStep onPick={handlePick} />
                 )}
+            </div>
+        );
+    }
+
+    if (state.status === "error") {
+        return (
+            <div className="mx-auto max-w-lg space-y-4 py-8">
+                <div className="rounded-3xl border border-red-200 bg-red-50 p-6 shadow-sm dark:border-red-900/50 dark:bg-red-900/20">
+                    <div className="text-lg font-bold text-red-700 dark:text-red-300">Sesiunea live nu este disponibilă</div>
+                    <p className="mt-2 text-sm text-red-600 dark:text-red-200">{state.error}</p>
+                </div>
+                <button
+                    onClick={() => { setPhase("pick"); setSessionCode(""); nav("/app/live/host"); }}
+                    className="w-full rounded-2xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 dark:bg-indigo-500"
+                >
+                    Înapoi la selecția quizului
+                </button>
             </div>
         );
     }
@@ -402,86 +336,41 @@ export function AdminLivePage() {
     // ── Running ───────────────────────────────────────────────────────────────
 
     return (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_300px]">
-            {/* Main */}
-            <div className="space-y-5">
-                {/* Control bar */}
-                <div className="rounded-3xl border border-slate-900/10 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                            <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
-                            <div>
-                                <span className="text-sm font-bold text-slate-900 dark:text-white">Live</span>
-                                <span className="ml-2 text-sm text-slate-500 dark:text-slate-400">
-                                    {state.players.length} jucători • cod <span className="font-mono font-bold">{sessionCode}</span>
-                                </span>
+        <div className="space-y-5">
+            <div className="rounded-3xl border border-slate-900/10 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                        <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
+                        <div>
+                            <div className="text-sm font-bold text-slate-900 dark:text-white">Quiz live în desfășurare</div>
+                            <div className="text-sm text-slate-500 dark:text-slate-400">
+                                {state.players.length} jucători • cod <span className="font-mono font-bold">{sessionCode}</span>
                             </div>
                         </div>
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => setShowEndConfirm(true)}
-                                className="rounded-2xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-300 transition"
-                            >
-                                Stop
-                            </button>
-                        </div>
                     </div>
-
-                    {/* Progress bar */}
-                    <div className="mt-3">
-                        <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-                            <span>Progres sesiune</span>
-                            <span>{state.questionIndex + 1} / {state.totalQuestions}</span>
-                        </div>
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                            <div className="h-1.5 rounded-full bg-indigo-500 transition-all duration-500"
-                                style={{ width: `${((state.questionIndex + 1) / Math.max(1, state.totalQuestions)) * 100}%` }} />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Question + timer */}
-                {state.currentQuestion && (
-                    <div className="rounded-3xl border border-slate-900/10 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
-                        <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                                <QuestionDisplay
-                                    q={state.currentQuestion}
-                                    index={state.questionIndex}
-                                    total={state.totalQuestions}
-                                />
-                            </div>
-                            {state.deadlineUtc && (
-                                <div className="shrink-0">
-                                    <Countdown deadline={state.deadlineUtc} total={state.timeLimitSeconds} />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {/* Live responses counter */}
-                <div className="rounded-3xl border border-slate-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
-                    <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Jucători conectați</div>
-                    <div className="flex flex-wrap gap-2">
-                        {state.players.map(p => (
-                            <span key={p.id}
-                                className="flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                {p.displayName}
-                            </span>
-                        ))}
-                    </div>
+                    <button
+                        onClick={() => setShowEndConfirm(true)}
+                        className="rounded-2xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-300 transition"
+                    >
+                        Stop
+                    </button>
                 </div>
             </div>
 
-            {/* Sidebar */}
-            <aside className="space-y-4">
-                <div className="rounded-3xl border border-slate-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
-                    <div className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">🏆 Clasament live</div>
-                    <LeaderboardPanel entries={state.leaderboard} />
+            <div className="rounded-3xl border border-slate-900/10 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                        <div className="text-lg font-bold text-slate-900 dark:text-white">Clasament live</div>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
+                            Hostul vede doar evoluția scorurilor în timpul testului.
+                        </p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        {state.leaderboard.length} participanți clasați
+                    </span>
                 </div>
-            </aside>
+                <LeaderboardPanel entries={state.leaderboard} />
+            </div>
 
             {/* End confirm modal */}
             {showEndConfirm && (

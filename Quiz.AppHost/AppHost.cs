@@ -19,6 +19,7 @@ var mongo = builder.AddMongoDB("quiz-mongo", port: 6001,
 // Databases (resurse separate -> connection string per DB)
 var quizDb = mongo.AddDatabase("quizdb");
 var authDb = mongo.AddDatabase("quizauthdb");
+var codingDb = mongo.AddDatabase("codingdb");
 
 var redis = builder.AddRedis("quiz-redis", port: 6002)
     .WithImage("redis", "7-alpine")
@@ -45,15 +46,19 @@ var quizService = builder.AddProject<Projects.Quiz_QuizService>("quizservice")
 var liveSessionService = builder.AddProject<Projects.Quiz_LiveSessionService>("livesessionservice")
     .WithReference(redis)
     .WithReference(rabbit)
+    .WithReference(quizDb)
     .WithReference(quizService)
     .WaitFor(redis)
     .WaitFor(rabbit)
+    .WaitFor(quizDb)
     .WaitFor(quizService);
 
 // ── Coding Service ────────────────────────────────────────────────────────────
 var codingService = builder.AddProject<Projects.Quiz_CodingService>("codingservice")
+    .WithReference(codingDb)
     .WithReference(redis)
     .WithReference(rabbit)
+    .WaitFor(codingDb)
     .WaitFor(redis)
     .WaitFor(rabbit);
 

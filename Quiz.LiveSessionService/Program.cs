@@ -1,5 +1,6 @@
 using Quiz.LiveSessionService.Hubs;
 using Quiz.LiveSessionService.Messaging;
+using Quiz.LiveSessionService.Data;
 using Quiz.LiveSessionService.Services;
 using Quiz.LiveSessionService.State;
 using StackExchange.Redis;
@@ -8,6 +9,14 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Controllers + SignalR
 builder.Services.AddControllers();
+builder.Services.Configure<MongoOptions>(options =>
+{
+    options.ConnectionString = builder.Configuration.GetConnectionString("quizdb")
+                               ?? builder.Configuration["Mongo:ConnectionString"];
+    options.Database = "quizdb";
+});
+builder.Services.AddSingleton<MongoContext>();
+builder.Services.AddSingleton<LiveQuizHistoryService>();
 builder.Services.AddSignalR(opts =>
 {
     opts.EnableDetailedErrors = builder.Environment.IsDevelopment();
@@ -78,6 +87,12 @@ app.MapControllers();
 
 // SignalR Hub with credentials CORS policy
 app.MapHub<LiveQuizHub>("/hubs/live-quiz").RequireCors("signalr");
+
+using (var scope = app.Services.CreateScope())
+{
+    var mongo = scope.ServiceProvider.GetRequiredService<MongoContext>();
+    await MongoIndexes.EnsureAsync(mongo);
+}
 
 app.MapGet("/healthz", () => Results.Ok(new { ok = true, service = "LiveSessionService" }));
 

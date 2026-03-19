@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as signalR from "@microsoft/signalr";
-import type { ValidationViolation } from "../api/codingApi";
 import { extractErrorMessage, toastErrorMessage } from "../utils/toastError";
+import type { CompileCodingCaseResult, CompileCodingTask } from "../api/compileCodingApi";
 
 export type SessionStatus = "idle" | "connecting" | "lobby" | "running" | "ended" | "error";
 
@@ -9,68 +9,81 @@ export type Player = { id: string; displayName: string };
 
 export type LeaderboardEntry = { playerId: string; displayName: string; score: number };
 
-export type CodeAck = {
+export type CompileSolutionAck = {
+    taskId: string;
+    language: string;
     passed: boolean;
-    violations: ValidationViolation[];
-    pointsEarned: number;
-    yourScore: number;
+    passedCaseCount: number;
+    totalCaseCount: number;
+    bestTaskScore: number;
+    scoreDelta: number;
+    totalScore: number;
+    compileError?: string | null;
+    runtimeError?: string | null;
+    cases: CompileCodingCaseResult[];
 };
 
-export type LiveCodingState = {
+export type LiveCompileCodingState = {
     status: SessionStatus;
     error: string | null;
+    title: string | null;
     players: Player[];
-    rulesetName: string | null;
+    allowedLanguages: string[];
+    tasks: CompileCodingTask[];
     deadlineUtc: Date | null;
     leaderboard: LeaderboardEntry[];
-    lastAck: CodeAck | null;
+    playerTaskScores: Record<string, number>;
+    lastAck: CompileSolutionAck | null;
 };
 
 const HUB_URL = "http://localhost:5000";
 const SESSION_CODE_REGEX = /^[A-Z0-9]{6}$/;
 const MAX_DISPLAY_NAME_LENGTH = 50;
 
-const initialState: LiveCodingState = {
+const initialState: LiveCompileCodingState = {
     status: "idle",
     error: null,
+    title: null,
     players: [],
-    rulesetName: null,
+    allowedLanguages: [],
+    tasks: [],
     deadlineUtc: null,
     leaderboard: [],
+    playerTaskScores: {},
     lastAck: null,
 };
 
-export function useLiveCodingSession(
+export function useLiveCompileCodingSession(
     sessionCode: string,
     displayName: string,
     enabled: boolean,
     mode: "player" | "host" = "player",
 ) {
     const connRef = useRef<signalR.HubConnection | null>(null);
-    const stateRef = useRef<LiveCodingState>(initialState);
+    const stateRef = useRef<LiveCompileCodingState>(initialState);
     const suppressCloseErrorRef = useRef(false);
 
-    const [state, setState] = useState<LiveCodingState>(initialState);
+    const [state, setState] = useState<LiveCompileCodingState>(initialState);
 
     useEffect(() => {
         stateRef.current = state;
     }, [state]);
 
-    const patch = useCallback((p: Partial<LiveCodingState>) =>
+    const patch = useCallback((p: Partial<LiveCompileCodingState>) =>
         setState(prev => ({ ...prev, ...p })), []);
 
     const pushError = useCallback((message: string, fatal = false) => {
-        const normalizedMessage = message.trim() || "A apărut o eroare.";
-        if (fatal && stateRef.current.status === "error" && stateRef.current.error === normalizedMessage) {
+        const normalized = message.trim() || "A apărut o eroare.";
+        if (fatal && stateRef.current.status === "error" && stateRef.current.error === normalized) {
             return;
         }
 
         setState(prev => ({
             ...prev,
-            error: normalizedMessage,
+            error: normalized,
             status: fatal ? "error" : prev.status,
         }));
-        toastErrorMessage(normalizedMessage, `live-coding:${mode}:${sessionCode}:${normalizedMessage}`);
+        toastErrorMessage(normalized, `live-compile:${mode}:${sessionCode}:${normalized}`);
     }, [mode, sessionCode]);
 
     const reportError = useCallback((err: any, fallback: string, fatal = false) => {
@@ -92,16 +105,16 @@ export function useLiveCodingSession(
             return;
         }
 
-        const displayNameError = validateDisplayName(displayName);
-        if (displayNameError) {
-            pushError(displayNameError, true);
+        const nameError = validateDisplayName(displayName);
+        if (nameError) {
+            pushError(nameError, true);
             return;
         }
 
         setState({ ...initialState, status: "connecting" });
 
         const conn = new signalR.HubConnectionBuilder()
-            .withUrl(`${HUB_URL}/coding-hubs/live-coding`)
+            .withUrl(`${HUB_URL}/coding-hubs/live-compile-coding`)
             .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
             .configureLogging(signalR.LogLevel.Warning)
             .build();
@@ -109,19 +122,31 @@ export function useLiveCodingSession(
         connRef.current = conn;
         suppressCloseErrorRef.current = false;
 
-        conn.on("lobbyUpdate", (d: { players: Player[] }) =>
-            patch({ players: d.players ?? [] }));
+        conn.on("lobbyUpdate", (d: { players: Player[] }) => patch({ players: d.players ?? [] }));
 
-        conn.on("sessionStarted", (d: { rulesetName: string; deadlineUtc?: string }) =>
+        conn.on("sessionStarted", (d: {
+            title: string;
+            allowedLanguages: string[];
+            tasks: CompileCodingTask[];
+            deadlineUtc?: string;
+        }) => patch({
+            status: "running",
+            title: d.title ?? null,
+            allowedLanguages: d.allowedLanguages ?? [],
+            tasks: d.tasks ?? [],
+            deadlineUtc: d.deadlineUtc ? new Date(d.deadlineUtc) : null,
+            lastAck: null,
+        }));
+
+        conn.on("solutionAck", (ack: CompileSolutionAck) => {
             patch({
-                status: "running",
-                rulesetName: d.rulesetName ?? "Live Coding (Rule Based)",
-                deadlineUtc: d.deadlineUtc ? new Date(d.deadlineUtc) : null,
-                lastAck: null,
-            }));
-
-        conn.on("codeAck", (ack: CodeAck) =>
-            patch({ lastAck: ack }));
+                lastAck: ack,
+                playerTaskScores: {
+                    ...stateRef.current.playerTaskScores,
+                    [ack.taskId]: ack.bestTaskScore,
+                },
+            });
+        });
 
         conn.on("leaderboard", (d: { leaderboard: LeaderboardEntry[] }) =>
             patch({ leaderboard: d.leaderboard ?? [] }));
@@ -135,10 +160,13 @@ export function useLiveCodingSession(
 
             patch({
                 status: isRunning ? "running" : isEnded ? "ended" : "lobby",
-                rulesetName: d.rulesetName ?? null,
+                title: d.title ?? null,
+                allowedLanguages: d.allowedLanguages ?? [],
+                tasks: d.tasks ?? [],
                 deadlineUtc: d.deadlineUtc ? new Date(d.deadlineUtc) : null,
                 leaderboard: d.leaderboard ?? [],
                 players: d.players ?? [],
+                playerTaskScores: d.playerTaskScores ?? {},
                 error: null,
             });
         });
@@ -174,16 +202,13 @@ export function useLiveCodingSession(
                 await conn.invoke("GetSessionState", sessionCode);
             } catch (err: any) {
                 if (!disposed) {
-                    reportError(err, "Nu mă pot reconecta la sesiunea live de coding.", true);
+                    reportError(err, "Nu mă pot reconecta la sesiunea live compile.", true);
                 }
             }
         });
 
         conn.onclose((err) => {
-            if (disposed) {
-                return;
-            }
-
+            if (disposed) return;
             if (suppressCloseErrorRef.current) {
                 suppressCloseErrorRef.current = false;
                 return;
@@ -203,7 +228,7 @@ export function useLiveCodingSession(
             } catch (err: any) {
                 suppressCloseErrorRef.current = true;
                 await conn.stop().catch(() => undefined);
-                reportError(err, "Conexiunea la sesiunea de coding a eșuat.", true);
+                reportError(err, "Conexiunea la sesiunea compile a eșuat.", true);
             }
         };
 
@@ -231,22 +256,25 @@ export function useLiveCodingSession(
         }
     }, [sessionCode, pushError, reportError]);
 
-    const submitCode = useCallback(async (code: string) => {
+    const submitSolution = useCallback(async (taskId: string, language: string, sourceCode: string) => {
         if (!connRef.current) {
             pushError("Conexiunea live nu este disponibilă.");
             return false;
         }
-
-        if (!code.trim()) {
+        if (!taskId.trim()) {
+            pushError("Sarcina selectată este invalidă.");
+            return false;
+        }
+        if (!sourceCode.trim()) {
             pushError("Codul sursă nu poate fi gol.");
             return false;
         }
 
         try {
-            await connRef.current.invoke("SubmitCode", sessionCode, code);
+            await connRef.current.invoke("SubmitSolution", sessionCode, taskId, language, sourceCode);
             return true;
         } catch (err: any) {
-            reportError(err, "Codul nu a putut fi trimis.");
+            reportError(err, "Soluția nu a putut fi trimisă.");
             return false;
         }
     }, [sessionCode, pushError, reportError]);
@@ -266,7 +294,7 @@ export function useLiveCodingSession(
         }
     }, [sessionCode, pushError, reportError]);
 
-    return { state, startSession, submitCode, endSession };
+    return { state, startSession, submitSolution, endSession };
 }
 
 function validateSessionCode(sessionCode: string) {

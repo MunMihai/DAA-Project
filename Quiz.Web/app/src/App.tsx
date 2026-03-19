@@ -41,6 +41,11 @@ import { SubmissionsPage } from "./pages/app/SubmissionsPage.tsx";
 import { CodingTaskPage } from "./pages/app/CodingTaskPage.tsx";
 import { AdminLiveCodingPage } from "./pages/admin/AdminLiveCodingPage.tsx";
 import { JoinLiveCodingPage } from "./pages/app/JoinLiveCodingPage.tsx";
+import { QuizSubmissionDetailPage } from "./pages/app/QuizSubmissionDetailPage.tsx";
+import { CodingSubmissionDetailPage } from "./pages/app/CodingSubmissionDetailPage.tsx";
+import { AdminLiveCompileCodingPage } from "./pages/admin/AdminLiveCompileCodingPage.tsx";
+import { JoinLiveCompileCodingPage } from "./pages/app/JoinLiveCompileCodingPage.tsx";
+import { CompileCodingSubmissionDetailPage } from "./pages/app/CompileCodingSubmissionDetailPage.tsx";
 import { applyTheme, getInitialTheme } from "./theme.ts";
 import { useAuth } from "./auth/AuthContext.tsx";
 
@@ -79,6 +84,8 @@ export default function App() {
 
                     <Route path="/app/coding-live" element={<JoinLiveCodingPage />} />
                     <Route path="/app/coding-live/join/:code" element={<JoinLiveCodingPage />} />
+                    <Route path="/app/coding-compile-live" element={<JoinLiveCompileCodingPage />} />
+                    <Route path="/app/coding-compile-live/join/:code" element={<JoinLiveCompileCodingPage />} />
 
                     {/* Live — admin/profesor */}
                     <Route element={<AdminRoute />}>
@@ -86,11 +93,16 @@ export default function App() {
                         <Route path="/app/live/host/:code" element={<AdminLivePage />} />
                         <Route path="/app/coding-live/host" element={<AdminLiveCodingPage />} />
                         <Route path="/app/coding-live/host/:code" element={<AdminLiveCodingPage />} />
+                        <Route path="/app/coding-compile-live/host" element={<AdminLiveCompileCodingPage />} />
+                        <Route path="/app/coding-compile-live/host/:code" element={<AdminLiveCompileCodingPage />} />
                     </Route>
 
                     {/* Alte pagini */}
                     <Route path="/app/contests" element={<ContestsPage />} />
                     <Route path="/app/submissions" element={<SubmissionsPage />} />
+                    <Route path="/app/submissions/quiz/:code" element={<QuizSubmissionDetailPage />} />
+                    <Route path="/app/submissions/coding/:code" element={<CodingSubmissionDetailPage />} />
+                    <Route path="/app/submissions/coding-compile/:code" element={<CompileCodingSubmissionDetailPage />} />
 
                     {/* Admin */}
                     <Route element={<AdminRoute />}>

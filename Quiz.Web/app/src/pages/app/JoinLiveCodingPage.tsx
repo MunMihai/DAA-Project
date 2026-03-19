@@ -78,15 +78,37 @@ function MiniLeaderboard({ entries, myId }: { entries: LeaderboardEntry[]; myId:
     );
 }
 
-function JoinForm({ defaultCode, onJoin }: { defaultCode: string; onJoin: (code: string, name: string) => void }) {
+function JoinForm({
+    defaultCode,
+    defaultName,
+    onJoin,
+}: {
+    defaultCode: string;
+    defaultName: string;
+    onJoin: (code: string, name: string) => void;
+}) {
     const { user } = useAuth();
     const [code, setCode] = useState(defaultCode);
-    const [name, setName] = useState(user?.email?.split("@")[0] ?? "");
+    const [name, setName] = useState(defaultName || (user?.email?.split("@")[0] ?? ""));
     const [err, setErr] = useState("");
 
     const handleSubmit = () => {
-        if (code.trim().length < 4) { setErr("Codul trebuie să aibă cel puțin 4 caractere."); return; }
-        if (!name.trim()) { setErr("Introdu un nume de afișare."); return; }
+        const normalizedCode = code.trim().toUpperCase();
+        const normalizedName = name.trim();
+
+        if (!/^[A-Z0-9]{6}$/.test(normalizedCode)) {
+            setErr("Codul trebuie să aibă exact 6 caractere alfanumerice.");
+            return;
+        }
+        if (!normalizedName) {
+            setErr("Introdu un nume de afișare.");
+            return;
+        }
+        if (normalizedName.length > 50) {
+            setErr("Numele de afișare poate avea cel mult 50 de caractere.");
+            return;
+        }
+
         onJoin(code.trim().toUpperCase(), name.trim());
     };
 
@@ -97,7 +119,7 @@ function JoinForm({ defaultCode, onJoin }: { defaultCode: string; onJoin: (code:
                     👨‍💻
                 </div>
                 <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-                    Intră în Coding Live
+                    Intră în Live Coding (Rule Based)
                 </h1>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                     Introdu codul primit de la profesor
@@ -112,7 +134,7 @@ function JoinForm({ defaultCode, onJoin }: { defaultCode: string; onJoin: (code:
                         </label>
                         <input
                             value={code}
-                            onChange={e => setCode(e.target.value.toUpperCase())}
+                            onChange={e => { setCode(e.target.value.toUpperCase()); setErr(""); }}
                             onKeyDown={e => e.key === "Enter" && handleSubmit()}
                             placeholder="ex: AB3X7K"
                             maxLength={6}
@@ -126,9 +148,10 @@ function JoinForm({ defaultCode, onJoin }: { defaultCode: string; onJoin: (code:
                         </label>
                         <input
                             value={name}
-                            onChange={e => setName(e.target.value)}
+                            onChange={e => { setName(e.target.value); setErr(""); }}
                             onKeyDown={e => e.key === "Enter" && handleSubmit()}
                             placeholder="Cum vrei să apari în clasament"
+                            maxLength={50}
                             className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-100"
                         />
                     </div>
@@ -166,6 +189,7 @@ export function JoinLiveCodingPage() {
         if (!codeParam) return defaultName;
         return sessionStorage.getItem(`lc_name_${codeParam.toUpperCase()}`) || defaultName;
     });
+    const [hasEstablishedSession, setHasEstablishedSession] = useState(false);
     const [studentCode, setStudentCode] = useState(() => {
         const defaultCode = "public class Solution\n{\n    \n}";
         if (!codeParam) return defaultCode;
@@ -183,11 +207,30 @@ export function JoinLiveCodingPage() {
         const upperCode = code.toUpperCase();
         setSessionCode(upperCode);
         setDisplayName(name);
+        setHasEstablishedSession(false);
         setJoined(true);
         sessionStorage.setItem(`lc_joined_${upperCode}`, "true");
         sessionStorage.setItem(`lc_name_${upperCode}`, name);
         nav(`/app/coding-live/join/${upperCode}`, { replace: true });
     };
+
+    useEffect(() => {
+        if (state.status === "lobby" || state.status === "running" || state.status === "ended") {
+            setHasEstablishedSession(true);
+        }
+    }, [state.status]);
+
+    useEffect(() => {
+        if (!joined) {
+            setHasEstablishedSession(false);
+            return;
+        }
+
+        if (!hasEstablishedSession && state.status === "error") {
+            sessionStorage.removeItem(`lc_joined_${sessionCode}`);
+            setJoined(false);
+        }
+    }, [joined, hasEstablishedSession, state.status, sessionCode]);
 
     const handleCodeChange = (e: any) => {
         const val = e.target.value;
@@ -200,7 +243,7 @@ export function JoinLiveCodingPage() {
     if (!joined) {
         return (
             <div className="flex min-h-[60vh] items-center justify-center px-4">
-                <JoinForm defaultCode={codeParam ?? ""} onJoin={handleJoin} />
+                <JoinForm defaultCode={codeParam ?? ""} defaultName={displayName} onJoin={handleJoin} />
             </div>
         );
     }
@@ -273,7 +316,7 @@ export function JoinLiveCodingPage() {
                     </div>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                         Bun venit, <strong className="text-slate-800 dark:text-slate-200">{displayName}</strong>.<br />
-                        Aștepți ca profesorul să înceapă sarcina de programare.
+                        Aștepți ca profesorul să înceapă sesiunea de coding rule based.
                     </p>
 
                     <div className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-indigo-50 px-4 py-2 dark:bg-indigo-500/10">
@@ -312,7 +355,7 @@ export function JoinLiveCodingPage() {
                 <div className="space-y-4">
                     <div className="rounded-3xl border border-slate-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/55 flex justify-between items-center">
                         <div>
-                            <span className="text-sm font-bold text-slate-900 dark:text-white">Live Coding</span>
+                            <span className="text-sm font-bold text-slate-900 dark:text-white">Live Coding (Rule Based)</span>
                             <div className="text-xs text-slate-500 mt-1">Sesiune: {sessionCode}</div>
                         </div>
                         <div className="text-right flex items-center gap-4">

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../../api/axios";
 import { codingApi, type CodingRuleset } from "../../api/codingApi";
 import { useLiveCodingSession, type LeaderboardEntry } from "../../hooks/useLiveCodingSession";
+import { toastApiError } from "../../utils/toastError";
 
 function cn(...xs: (string | false | null | undefined)[]) {
     return xs.filter(Boolean).join(" ");
@@ -85,7 +86,7 @@ function SessionCodeDisplay({ code }: { code: string }) {
                 {copied ? "✓ Copiat!" : "Copiază codul"}
             </button>
             <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-                Studenții accesează <span className="font-semibold text-slate-700 dark:text-slate-200">/app/coding-live</span> și introduc codul
+                Studenții accesează <span className="font-semibold text-slate-700 dark:text-slate-200">/app/coding-live</span> pentru Live Coding (Rule Based) și introduc codul
             </p>
         </div>
     );
@@ -110,6 +111,7 @@ function CreateSessionStep({ onCreate }: { onCreate: (code: string) => void }) {
             setRuleset(result);
         } catch (err: any) {
             setError(err.response?.data?.message || err.message || "Eroare la generare");
+            toastApiError(err, "Nu pot genera ruleset-ul.");
         } finally {
             setLoading(false);
         }
@@ -124,6 +126,7 @@ function CreateSessionStep({ onCreate }: { onCreate: (code: string) => void }) {
             onCreate(res.sessionCode);
         } catch (err: any) {
             setError(err.response?.data?.message || err.message || "Eroare la creare");
+            toastApiError(err, "Nu pot crea sesiunea de coding.");
         } finally {
             setCreating(false);
         }
@@ -133,7 +136,7 @@ function CreateSessionStep({ onCreate }: { onCreate: (code: string) => void }) {
         <div className="space-y-6">
             <div className="rounded-3xl border border-slate-900/10 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
                 <div className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-                    Lansează Coding Sesiune
+                    Lansează Live Coding (Rule Based)
                 </div>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                     Inserează codul sursă de referință. Va fi generat un ruleset pentru autoevaluare.
@@ -197,7 +200,8 @@ export function AdminLiveCodingPage() {
     const { state, startSession, endSession } = useLiveCodingSession(
         sessionCode,
         "Profesor",
-        phase === "lobby" || phase === "session"
+        phase === "lobby" || phase === "session",
+        "host",
     );
 
     useEffect(() => {
@@ -218,6 +222,23 @@ export function AdminLiveCodingPage() {
 
     if (phase === "pick") {
         return <CreateSessionStep onCreate={handleCreate} />;
+    }
+
+    if (state.status === "error") {
+        return (
+            <div className="mx-auto max-w-lg space-y-4 py-8">
+                <div className="rounded-3xl border border-red-200 bg-red-50 p-6 shadow-sm dark:border-red-900/50 dark:bg-red-900/20">
+                    <div className="text-lg font-bold text-red-700 dark:text-red-300">Sesiunea Live Coding (Rule Based) nu este disponibilă</div>
+                    <p className="mt-2 text-sm text-red-600 dark:text-red-200">{state.error}</p>
+                </div>
+                <button
+                    onClick={() => { setPhase("pick"); setSessionCode(""); nav("/app/coding-live/host"); }}
+                    className="w-full rounded-2xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 dark:bg-indigo-500"
+                >
+                    Înapoi la configurarea sesiunii
+                </button>
+            </div>
+        );
     }
 
     if (state.status === "ended") {
@@ -255,7 +276,7 @@ export function AdminLiveCodingPage() {
                             <div>
                                 <div className="flex items-center gap-2">
                                     <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-amber-500" />
-                                    <span className="text-lg font-bold text-slate-900 dark:text-white">Lobby — așteptare studenți</span>
+                                    <span className="text-lg font-bold text-slate-900 dark:text-white">Lobby — Live Coding (Rule Based)</span>
                                 </div>
                                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                                     {state.players.length} conectați
@@ -266,7 +287,7 @@ export function AdminLiveCodingPage() {
                                 disabled={state.players.length === 0 || state.status === "connecting"}
                                 className="rounded-2xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50 dark:bg-emerald-500 transition"
                             >
-                                ▶ Start Coding
+                                ▶ Start Rule Based
                             </button>
                         </div>
                     </div>
@@ -313,7 +334,7 @@ export function AdminLiveCodingPage() {
                     <div className="flex items-center gap-3">
                         <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
                         <div>
-                            <span className="text-sm font-bold text-slate-900 dark:text-white">Live Coding în desfășurare</span>
+                            <span className="text-sm font-bold text-slate-900 dark:text-white">Live Coding (Rule Based) în desfășurare</span>
                             <div className="text-sm text-slate-500 dark:text-slate-400">Cod Sesiune: {sessionCode}</div>
                         </div>
                     </div>

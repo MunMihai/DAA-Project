@@ -128,6 +128,9 @@ public sealed class LiveSessionStateStore(IConnectionMultiplexer mux)
         await Db.HashSetAsync(ScK(code), playerId, 0, When.NotExists);
     }
 
+    public Task<bool> PlayerExists(string code, string playerId) =>
+        Db.HashExistsAsync(PK(code), playerId);
+
     public async Task RemovePlayer(string code, string playerId)
     {
         // Do not delete from PK or PlayerIdxK so players can reconnect and resume progress after refresh

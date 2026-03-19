@@ -1,6 +1,7 @@
 using Quiz.CodingService.Services;
 using StackExchange.Redis;
 using Quiz.CodingService.Engine;
+using Quiz.CodingService.Data;
 using Quiz.CodingService.State;
 using Quiz.CodingService.Messaging;
 using Quiz.CodingService.Hubs;
@@ -9,6 +10,16 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.Configure<MongoOptions>(options =>
+{
+    options.ConnectionString = builder.Configuration.GetConnectionString("codingdb")
+                               ?? builder.Configuration["Mongo:ConnectionString"];
+    options.Database = "codingdb";
+});
+builder.Services.AddSingleton<MongoContext>();
+builder.Services.AddSingleton<LiveCodingHistoryService>();
+builder.Services.AddSingleton<LiveCompileCodingHistoryService>();
+builder.Services.AddSingleton<CompileCodingTemplateService>();
 
 var groqApiKey = builder.Configuration["Groq:ApiKey"] ?? throw new Exception("Groq:ApiKey is missing in appsettings");
 var groqModel = builder.Configuration["Groq:Model"] ?? "llama-3.3-70b-versatile";
@@ -18,6 +29,8 @@ var redisConn = builder.Configuration.GetConnectionString("quiz-redis") ?? "loca
 var multiplexer = ConnectionMultiplexer.Connect(redisConn);
 builder.Services.AddSingleton<IConnectionMultiplexer>(multiplexer);
 builder.Services.AddSingleton<LiveCodingSessionStateStore>();
+builder.Services.AddSingleton<LiveCompileCodingSessionStateStore>();
+builder.Services.AddSingleton<CompileCodeExecutionService>();
 
 builder.Services.AddSingleton<RabbitBus>();
 builder.Services.AddHostedService<RabbitEventConsumer>();
@@ -51,5 +64,15 @@ app.UseCors("api");
 
 app.MapControllers();
 app.MapHub<LiveCodingHub>("/coding-hubs/live-coding").RequireCors("signalr");
+app.MapHub<LiveCompileCodingHub>("/coding-hubs/live-compile-coding").RequireCors("signalr");
+
+using (var scope = app.Services.CreateScope())
+{
+    var mongo = scope.ServiceProvider.GetRequiredService<MongoContext>();
+    var compileTemplates = scope.ServiceProvider.GetRequiredService<CompileCodingTemplateService>();
+    await compileTemplates.DropLegacyTemplateIndexesAsync();
+    await compileTemplates.MigrateLegacyTemplateDocumentsAsync();
+    await MongoIndexes.EnsureAsync(mongo);
+}
 
 app.Run();

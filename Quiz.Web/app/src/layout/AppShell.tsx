@@ -140,11 +140,16 @@ export function AppShell({ children }: { children: ReactNode }) {
             },
             {
                 to: isAdmin ? "/app/coding-live/host" : "/app/coding-live",
-                label: "Live Coding",
+                label: "Live Coding (Rule Based)",
+                icon: <IconCode className="h-5 w-5" />,
+            },
+            {
+                to: isAdmin ? "/app/coding-compile-live/host" : "/app/coding-compile-live",
+                label: "Live Coding (Compile)",
                 icon: <IconCode className="h-5 w-5" />,
             },
             { to: "/app/contests", label: "Concursuri", icon: <IconTrophy className="h-5 w-5" /> },
-            { to: "/app/submissions", label: "Submisii", icon: <IconCode className="h-5 w-5" /> },
+            { to: "/app/submissions", label: isAdmin ? "Istoric teste" : "Submisii", icon: <IconCode className="h-5 w-5" /> },
         ];
 
         if (isAdmin) {

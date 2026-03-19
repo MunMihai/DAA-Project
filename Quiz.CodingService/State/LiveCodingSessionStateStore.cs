@@ -75,12 +75,30 @@ public sealed class LiveCodingSessionStateStore(IConnectionMultiplexer mux)
         return JsonSerializer.Deserialize<Ruleset>(rv.ToString(), JsonOpt);
     }
 
+    public async Task<int> GetTimeLimitSeconds(string code)
+    {
+        var rv = await Db.HashGetAsync(SK(code), "timeLimitSeconds");
+        return int.TryParse(rv.ToString(), out var seconds) ? seconds : 600;
+    }
+
+    public async Task<DateTimeOffset?> GetDeadlineUtc(string code)
+    {
+        var rv = await Db.HashGetAsync(SK(code), "deadlineUtc");
+        if (rv.IsNullOrEmpty) return null;
+        return long.TryParse(rv.ToString(), out var unixSeconds)
+            ? DateTimeOffset.FromUnixTimeSeconds(unixSeconds)
+            : null;
+    }
+
     // ── Players ───────────────────────────────────────────────────────────────
     public async Task AddPlayer(string code, string playerId, string displayName)
     {
         await Db.HashSetAsync(PK(code), playerId, displayName);
         await Db.HashSetAsync(ScK(code), playerId, 0, When.NotExists);
     }
+
+    public Task<bool> PlayerExists(string code, string playerId) =>
+        Db.HashExistsAsync(PK(code), playerId);
 
     public async Task RemovePlayer(string code, string playerId)
     {

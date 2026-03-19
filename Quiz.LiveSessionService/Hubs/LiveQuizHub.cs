@@ -11,7 +11,7 @@ namespace Quiz.LiveSessionService.Hubs;
 /// Client → Server methods:
 ///   Join(code, displayName)
 ///   StartSession(code)
-///   NextQuestion(code)
+///   FetchNextQuestion(code)
 ///   SubmitAnswer(code, questionIndex, payload)
 ///   EndSession(code)
 ///   GetSessionState(code)
@@ -30,49 +30,74 @@ public sealed class LiveQuizHub(
     LiveSessionStateStore store,
     RabbitBus bus,
     QuizServiceClient quizClient,
+    LiveQuizHistoryService history,
     ILogger<LiveQuizHub> log
 ) : Hub
 {
-    // ── Join ──────────────────────────────────────────────────────────────────
-    /// <summary>Player joins the lobby. Must be called before anything else.</summary>
-    public async Task Join(string sessionCode, string displayName)
+    private const int SessionCodeLength = 6;
+    private const int MaxDisplayNameLength = 50;
+    private const int MaxTextAnswerLength = 1000;
+
+    public async Task JoinHost(string sessionCode, string displayName)
     {
-        sessionCode = Sanitize(sessionCode);
-        displayName = displayName.Trim();
+        sessionCode = NormalizeSessionCode(sessionCode);
+        EnsureValidSessionCode(sessionCode);
+
+        displayName = NormalizeDisplayName(displayName, "Profesor");
+        EnsureValidDisplayName(displayName);
 
         if (!await store.SessionExists(sessionCode))
-        {
-            await Clients.Caller.SendAsync("error", new { message = "Session not found." });
-            return;
-        }
+            throw new HubException("Sesiunea nu există.");
 
         var status = await store.GetStatus(sessionCode);
         if (status == "ended")
-        {
-            await Clients.Caller.SendAsync("error", new { message = "Session already ended." });
-            return;
-        }
+            throw new HubException("Sesiunea este deja încheiată.");
 
-        var playerId = "usr_" + Uri.EscapeDataString(displayName.ToLowerInvariant());
+        var hostId = BuildHostId(displayName);
+        var existingHostId = await store.GetHostId(sessionCode);
+        if (!string.IsNullOrWhiteSpace(existingHostId) && existingHostId != "__pending__" && existingHostId != hostId)
+            throw new HubException("Sesiunea este deja controlată de un alt host.");
+
+        await store.SetHostId(sessionCode, hostId);
+        await Groups.AddToGroupAsync(Context.ConnectionId, sessionCode);
+
+        Context.Items["sessionCode"] = sessionCode;
+        Context.Items["playerId"] = hostId;
+        Context.Items["displayName"] = displayName;
+        Context.Items["isHost"] = true;
+
+        log.LogInformation("Host {HostId} ({Name}) joined session {Code}", hostId, displayName, sessionCode);
+    }
+
+    /// <summary>Player joins the lobby. Must be called before anything else.</summary>
+    public async Task Join(string sessionCode, string displayName)
+    {
+        sessionCode = NormalizeSessionCode(sessionCode);
+        EnsureValidSessionCode(sessionCode);
+
+        displayName = NormalizeDisplayName(displayName);
+        EnsureValidDisplayName(displayName);
+
+        if (!await store.SessionExists(sessionCode))
+            throw new HubException("Sesiunea nu există.");
+
+        var status = await store.GetStatus(sessionCode);
+        if (status == "ended")
+            throw new HubException("Sesiunea este deja încheiată.");
+
+        var playerId = BuildPlayerId(displayName);
 
         await store.AddPlayer(sessionCode, playerId, displayName);
         await Groups.AddToGroupAsync(Context.ConnectionId, sessionCode);
 
-        // Map earliest joined user as Host if pending
-        var hostId = await store.GetHostId(sessionCode);
-        if (hostId == "__pending__")
-        {
-            await store.SetHostId(sessionCode, playerId);
-            log.LogInformation("Assigned Player {PlayerId} as Host for session {Code}", playerId, sessionCode);
-        }
-
         log.LogInformation("Player {PlayerId} ({Name}) joined session {Code}", playerId, displayName, sessionCode);
 
-        // Store session code in connection context (for disconnect cleanup)
         Context.Items["sessionCode"] = sessionCode;
         Context.Items["playerId"] = playerId;
+        Context.Items["displayName"] = displayName;
 
-        // Publish to RabbitMQ
+        await history.UpsertParticipantAsync(sessionCode, playerId, displayName);
+
         await bus.PublishAsync("player.joined", new
         {
             sessionCode,
@@ -81,10 +106,8 @@ public sealed class LiveQuizHub(
             at = DateTimeOffset.UtcNow
         });
 
-        // Broadcast lobby update to all in group
         await BroadcastLobbyUpdate(sessionCode);
 
-        // If session already running, send current state to late joiner
         if (status == "running")
         {
             var info = await store.GetSessionInfo(sessionCode);
@@ -116,35 +139,38 @@ public sealed class LiveQuizHub(
         }
     }
 
-    // ── Start session ─────────────────────────────────────────────────────────
     /// <summary>Host starts the session. Fetches quiz, stores snapshot, begins Q0.</summary>
     public async Task StartSession(string sessionCode)
     {
-        sessionCode = Sanitize(sessionCode);
-        var playerId = GetPlayerId();
+        sessionCode = NormalizeSessionCode(sessionCode);
+        EnsureValidSessionCode(sessionCode);
+        EnsureConnectionBoundToSession(sessionCode);
 
+        if (!IsHostConnection())
+            throw new HubException("Doar hostul poate porni sesiunea.");
+
+        if (!await store.SessionExists(sessionCode))
+            throw new HubException("Sesiunea nu există.");
+
+        var actorId = GetActorId();
         var hostId = await store.GetHostId(sessionCode);
-        if (hostId != playerId)
-        {
-            await Clients.Caller.SendAsync("error", new { message = "Only the host can start the session." });
-            return;
-        }
+        if (hostId != actorId)
+            throw new HubException("Doar hostul poate porni sesiunea.");
 
         var status = await store.GetStatus(sessionCode);
+        if (status == "ended")
+            throw new HubException("Sesiunea este deja încheiată.");
         if (status != "lobby")
-        {
-            await Clients.Caller.SendAsync("error", new { message = $"Cannot start: session is '{status}'." });
-            return;
-        }
+            throw new HubException("Sesiunea poate fi pornită doar din lobby.");
+
+        var playerCount = await store.GetPlayerCount(sessionCode);
+        if (playerCount == 0)
+            throw new HubException("Nu poți porni sesiunea fără participanți.");
 
         var quizId = await store.GetQuizId(sessionCode);
         if (string.IsNullOrWhiteSpace(quizId))
-        {
-            await Clients.Caller.SendAsync("error", new { message = "Invalid session (no quizId)." });
-            return;
-        }
+            throw new HubException("Sesiunea nu are un quiz valid asociat.");
 
-        // Fetch quiz from QuizService
         QuizSnapshot snap;
         try
         {
@@ -153,23 +179,19 @@ public sealed class LiveQuizHub(
         catch (Exception ex)
         {
             log.LogError(ex, "Failed to fetch quiz {QuizId}", quizId);
-            await Clients.Caller.SendAsync("error", new { message = "Failed to load quiz." });
-            return;
+            throw new HubException("Quiz-ul nu a putut fi încărcat.");
         }
 
         if (snap.Questions.Count == 0)
-        {
-            await Clients.Caller.SendAsync("error", new { message = "Quiz has no questions." });
-            return;
-        }
+            throw new HubException("Quiz-ul selectat nu conține întrebări.");
 
         await store.StoreQuizSnapshot(sessionCode, snap);
         await store.SetStatus(sessionCode, "running");
         await store.SetSessionDeadline(sessionCode, snap.TimeLimitSeconds);
+        await history.RecordSessionStartedAsync(sessionCode, snap);
 
         log.LogInformation("Session {Code} started — quiz {QuizId}, {Count} questions", sessionCode, quizId, snap.Questions.Count);
 
-        // Publish to RabbitMQ
         await bus.PublishAsync("session.started", new
         {
             sessionCode,
@@ -179,8 +201,6 @@ public sealed class LiveQuizHub(
         });
 
         var sessionInfo = await store.GetSessionInfo(sessionCode);
-
-        // Broadcast: session started
         var pubSnap = await store.GetPublicSnapshot(sessionCode);
         await Clients.Group(sessionCode).SendAsync("sessionStarted", new
         {
@@ -190,7 +210,6 @@ public sealed class LiveQuizHub(
             deadlineUtc = sessionInfo?.SessionDeadline
         });
 
-        // Push first question to everyone (since StartSession is called by Host, everyone is at Q0)
         var q0 = await store.GetQuestion(sessionCode, 0);
         if (q0 != null)
         {
@@ -204,67 +223,90 @@ public sealed class LiveQuizHub(
         }
     }
 
-    // ── Fetch Next Question (Individual) ──────────────────────────────────────
     /// <summary>Player requests their next question in the individualized flow.</summary>
     public async Task FetchNextQuestion(string sessionCode)
     {
-        sessionCode = Sanitize(sessionCode);
-        var playerId = GetPlayerId();
+        sessionCode = NormalizeSessionCode(sessionCode);
+        EnsureValidSessionCode(sessionCode);
+        EnsureConnectionBoundToSession(sessionCode);
+
+        if (IsHostConnection())
+            throw new HubException("Hostul nu poate cere întrebările unui participant.");
+
+        if (!await store.SessionExists(sessionCode))
+            throw new HubException("Sesiunea nu există.");
+
+        var playerId = GetActorId();
+        if (!await store.PlayerExists(sessionCode, playerId))
+            throw new HubException("Mai întâi trebuie să intri în sesiune.");
 
         var info = await store.GetSessionInfo(sessionCode);
-        if (info is null || info.Status != "running")
-        {
-            await Clients.Caller.SendAsync("error", new { message = "Session is not running." });
-            return;
-        }
+        if (info is null)
+            throw new HubException("Sesiunea nu există.");
+        if (info.Status != "running")
+            throw new HubException("Sesiunea nu este în desfășurare.");
 
         var playerIndex = await store.GetPlayerIndex(sessionCode, playerId);
-        
         if (playerIndex >= info.TotalQuestions)
         {
-            // Player has finished the quiz. Handled by client.
             await Clients.Caller.SendAsync("playerFinished");
             return;
         }
 
         var snap = await store.GetPublicSnapshot(sessionCode);
         var question = await store.GetQuestion(sessionCode, playerIndex);
+        if (question is null)
+            throw new HubException("Întrebarea următoare nu este disponibilă.");
 
-        if (question != null)
+        await Clients.Caller.SendAsync("questionStarted", new
         {
-            await Clients.Caller.SendAsync("questionStarted", new
-            {
-                index = playerIndex,
-                question,
-                deadlineUtc = info.SessionDeadline,
-                timeLimitSeconds = snap?.TimeLimitSeconds ?? 30
-            });
-        }
+            index = playerIndex,
+            question,
+            deadlineUtc = info.SessionDeadline,
+            timeLimitSeconds = snap?.TimeLimitSeconds ?? 30
+        });
     }
 
-    // ── Submit answer ─────────────────────────────────────────────────────────
     /// <summary>Player submits an answer. Evaluated server-side, score updated in Redis.</summary>
     public async Task SubmitAnswer(string sessionCode, int questionIndex, AnswerPayload payload)
     {
-        sessionCode = Sanitize(sessionCode);
-        var playerId = GetPlayerId();
+        sessionCode = NormalizeSessionCode(sessionCode);
+        EnsureValidSessionCode(sessionCode);
+        EnsureConnectionBoundToSession(sessionCode);
 
+        if (IsHostConnection())
+            throw new HubException("Hostul nu poate trimite răspunsuri.");
+        if (payload is null)
+            throw new HubException("Răspunsul nu a fost trimis corect.");
+
+        if (!await store.SessionExists(sessionCode))
+            throw new HubException("Sesiunea nu există.");
+
+        var playerId = GetActorId();
+        if (!await store.PlayerExists(sessionCode, playerId))
+            throw new HubException("Mai întâi trebuie să intri în sesiune.");
+
+        var displayName = await GetDisplayName(sessionCode, playerId);
         var info = await store.GetSessionInfo(sessionCode);
-        if (info is null || info.Status != "running")
-        {
-            await Clients.Caller.SendAsync("error", new { message = "Session not running." });
-            return;
-        }
+        if (info is null)
+            throw new HubException("Sesiunea nu există.");
+        if (info.Status != "running")
+            throw new HubException("Sesiunea nu este în desfășurare.");
+        if (questionIndex < 0 || questionIndex >= info.TotalQuestions)
+            throw new HubException("Întrebarea selectată nu este validă.");
 
         var playerIndex = await store.GetPlayerIndex(sessionCode, playerId);
-
         if (questionIndex != playerIndex)
-        {
-            await Clients.Caller.SendAsync("error", new { message = "Question index mismatch." });
-            return;
-        }
+            throw new HubException("Întrebarea trimisă nu corespunde progresului tău curent.");
 
-        // Check deadline
+        var question = await store.GetQuestion(sessionCode, questionIndex);
+        if (question is null)
+            throw new HubException("Întrebarea nu mai este disponibilă.");
+
+        var payloadError = ValidateAnswerPayload(question, payload);
+        if (payloadError is not null)
+            throw new HubException(payloadError);
+
         if (DateTimeOffset.UtcNow > info.SessionDeadline)
         {
             await Clients.Caller.SendAsync("answerAck", new
@@ -279,26 +321,37 @@ public sealed class LiveQuizHub(
         }
 
         var result = await store.SaveAndCheckAnswer(sessionCode, questionIndex, playerId, payload);
-        
-        // Only increment pointer if it wasn't already answered and not expired
-        if (!result.AlreadyAnswered) 
+
+        if (!result.AlreadyAnswered)
         {
             await store.IncrementPlayerIndex(sessionCode, playerId);
         }
 
         var scores = await store.GetScores(sessionCode);
+        var currentScore = scores.GetValueOrDefault(playerId, 0);
 
-        // Ack to caller only
+        if (!result.AlreadyAnswered)
+        {
+            await history.RecordAnswerAsync(
+                sessionCode,
+                playerId,
+                displayName,
+                questionIndex,
+                question,
+                payload,
+                result,
+                currentScore);
+        }
+
         await Clients.Caller.SendAsync("answerAck", new
         {
             isCorrect = result.IsCorrect,
             pointsEarned = result.PointsEarned,
             alreadyAnswered = result.AlreadyAnswered,
             expired = false,
-            yourScore = scores.GetValueOrDefault(playerId, 0)
+            yourScore = currentScore
         });
 
-        // Publish event
         await bus.PublishAsync("answer.submitted", new
         {
             sessionCode,
@@ -308,7 +361,6 @@ public sealed class LiveQuizHub(
             at = DateTimeOffset.UtcNow
         });
 
-        // Broadcast updated leaderboard to all (scores only, no answers)
         var leaderboard = await BuildLeaderboard(sessionCode);
         await Clients.Group(sessionCode).SendAsync("leaderboard", new { leaderboard });
 
@@ -319,7 +371,6 @@ public sealed class LiveQuizHub(
             at = DateTimeOffset.UtcNow
         });
 
-        // Check if all players answered
         var answeredCount = await store.GetAnsweredCount(sessionCode, questionIndex);
         var playerCount = await store.GetPlayerCount(sessionCode);
         if (answeredCount >= playerCount && playerCount > 0)
@@ -334,12 +385,28 @@ public sealed class LiveQuizHub(
         }
     }
 
-    // ── End session ───────────────────────────────────────────────────────────
     public async Task EndSession(string sessionCode)
     {
-        sessionCode = Sanitize(sessionCode);
+        sessionCode = NormalizeSessionCode(sessionCode);
+        EnsureValidSessionCode(sessionCode);
+        EnsureConnectionBoundToSession(sessionCode);
+
+        if (!IsHostConnection())
+            throw new HubException("Doar hostul poate închide sesiunea.");
+        if (!await store.SessionExists(sessionCode))
+            throw new HubException("Sesiunea nu există.");
+
+        var actorId = GetActorId();
+        var hostId = await store.GetHostId(sessionCode);
+        if (hostId != actorId)
+            throw new HubException("Doar hostul poate închide sesiunea.");
+
+        var status = await store.GetStatus(sessionCode);
+        if (status == "ended")
+            throw new HubException("Sesiunea este deja încheiată.");
 
         await store.SetStatus(sessionCode, "ended");
+        await history.RecordSessionEndedAsync(sessionCode);
         var leaderboard = await BuildLeaderboard(sessionCode);
 
         await bus.PublishAsync("session.ended", new
@@ -354,28 +421,33 @@ public sealed class LiveQuizHub(
         log.LogInformation("Session {Code} ended", sessionCode);
     }
 
-    // ── Get state (reconnect / polling fallback) ──────────────────────────────
     public async Task GetSessionState(string sessionCode)
     {
-        sessionCode = Sanitize(sessionCode);
+        sessionCode = NormalizeSessionCode(sessionCode);
+        EnsureValidSessionCode(sessionCode);
+        EnsureConnectionBoundToSession(sessionCode);
 
         var info = await store.GetSessionInfo(sessionCode);
         if (info is null)
-        {
-            await Clients.Caller.SendAsync("error", new { message = "Session not found." });
-            return;
-        }
+            throw new HubException("Sesiunea nu există.");
 
         var snap = await store.GetPublicSnapshot(sessionCode);
         var leaderboard = await BuildLeaderboard(sessionCode);
         var players = await store.GetPlayers(sessionCode);
-        
-        var playerId = GetPlayerId();
-        var playerIndex = await store.GetPlayerIndex(sessionCode, playerId);
+        var currentQuestion = default(QuestionPublicSnapshot?);
+        var playerIndex = -1;
 
-        QuestionPublicSnapshot? currentQuestion = null;
-        if (playerIndex >= 0 && playerIndex < info.TotalQuestions)
-            currentQuestion = await store.GetQuestion(sessionCode, playerIndex);
+        if (!IsHostConnection())
+        {
+            var playerId = GetActorId();
+            if (!await store.PlayerExists(sessionCode, playerId))
+                throw new HubException("Mai întâi trebuie să intri în sesiune.");
+
+            playerIndex = await store.GetPlayerIndex(sessionCode, playerId);
+
+            if (playerIndex >= 0 && playerIndex < info.TotalQuestions)
+                currentQuestion = await store.GetQuestion(sessionCode, playerIndex);
+        }
 
         await Clients.Caller.SendAsync("sessionState", new
         {
@@ -392,35 +464,50 @@ public sealed class LiveQuizHub(
         });
     }
 
-    // ── Disconnect ────────────────────────────────────────────────────────────
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        var playerId = GetPlayerId();
+        var playerId = GetActorId();
 
         if (Context.Items.TryGetValue("sessionCode", out var codeObj) && codeObj is string sessionCode)
         {
-            await store.RemovePlayer(sessionCode, playerId);
-
-            await bus.PublishAsync("player.left", new
+            if (!IsHostConnection())
             {
-                sessionCode,
-                playerId,
-                at = DateTimeOffset.UtcNow
-            });
+                await store.RemovePlayer(sessionCode, playerId);
 
-            await BroadcastLobbyUpdate(sessionCode);
-            log.LogInformation("Player {PlayerId} disconnected from session {Code}", playerId, sessionCode);
+                await bus.PublishAsync("player.left", new
+                {
+                    sessionCode,
+                    playerId,
+                    at = DateTimeOffset.UtcNow
+                });
+
+                await BroadcastLobbyUpdate(sessionCode);
+                log.LogInformation("Player {PlayerId} disconnected from session {Code}", playerId, sessionCode);
+            }
         }
 
         await base.OnDisconnectedAsync(exception);
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-    private string GetPlayerId()
+    private string GetActorId()
     {
         if (Context.Items.TryGetValue("playerId", out var id) && id is string s)
             return s;
         return Context.ConnectionId;
+    }
+
+    private bool IsHostConnection() =>
+        Context.Items.TryGetValue("isHost", out var isHost)
+        && isHost is bool value
+        && value;
+
+    private async Task<string> GetDisplayName(string sessionCode, string playerId)
+    {
+        if (Context.Items.TryGetValue("displayName", out var value) && value is string displayName && !string.IsNullOrWhiteSpace(displayName))
+            return displayName;
+
+        var players = await store.GetPlayers(sessionCode);
+        return players.GetValueOrDefault(playerId, playerId);
     }
 
     private async Task BroadcastLobbyUpdate(string sessionCode)
@@ -441,5 +528,78 @@ public sealed class LiveQuizHub(
             .ToList();
     }
 
-    private static string Sanitize(string code) => (code ?? "").Trim().ToUpperInvariant();
+    private void EnsureConnectionBoundToSession(string sessionCode)
+    {
+        if (!Context.Items.TryGetValue("sessionCode", out var value) || value is not string boundSessionCode || string.IsNullOrWhiteSpace(boundSessionCode))
+            throw new HubException("Mai întâi trebuie să intri în sesiune.");
+
+        if (!string.Equals(boundSessionCode, sessionCode, StringComparison.OrdinalIgnoreCase))
+            throw new HubException("Conexiunea curentă nu aparține acestei sesiuni.");
+    }
+
+    private static string? ValidateAnswerPayload(QuestionPublicSnapshot question, AnswerPayload payload) =>
+        question.Type switch
+        {
+            0 => payload.BoolAnswer is null
+                ? "Selectează Adevărat sau Fals."
+                : null,
+            1 => !IsSingleChoiceValid(question, payload.SingleOptionId)
+                ? "Selectează o opțiune validă."
+                : null,
+            2 => !AreMultipleChoicesValid(question, payload.MultipleOptionIds)
+                ? "Selectează cel puțin o opțiune validă."
+                : null,
+            3 => string.IsNullOrWhiteSpace(payload.TextAnswer)
+                ? "Introdu un răspuns text."
+                : payload.TextAnswer.Trim().Length > MaxTextAnswerLength
+                    ? $"Răspunsul text poate avea cel mult {MaxTextAnswerLength} caractere."
+                    : null,
+            _ => "Tipul întrebării nu este suportat."
+        };
+
+    private static bool IsSingleChoiceValid(QuestionPublicSnapshot question, string? optionId) =>
+        !string.IsNullOrWhiteSpace(optionId)
+        && question.Options.Any(option => option.Id == optionId);
+
+    private static bool AreMultipleChoicesValid(QuestionPublicSnapshot question, List<string>? optionIds)
+    {
+        if (optionIds is null || optionIds.Count == 0)
+            return false;
+
+        var allowedIds = question.Options
+            .Select(option => option.Id)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.Ordinal);
+
+        return optionIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .All(allowedIds.Contains);
+    }
+
+    private static string NormalizeSessionCode(string? code) => (code ?? "").Trim().ToUpperInvariant();
+
+    private static string NormalizeDisplayName(string? displayName, string fallback = "") =>
+        string.IsNullOrWhiteSpace(displayName) ? fallback : displayName.Trim();
+
+    private static void EnsureValidSessionCode(string sessionCode)
+    {
+        if (sessionCode.Length != SessionCodeLength || sessionCode.Any(ch => !char.IsLetterOrDigit(ch)))
+            throw new HubException("Codul sesiunii este invalid.");
+    }
+
+    private static void EnsureValidDisplayName(string displayName)
+    {
+        if (string.IsNullOrWhiteSpace(displayName))
+            throw new HubException("Numele afișat este obligatoriu.");
+
+        if (displayName.Length > MaxDisplayNameLength)
+            throw new HubException($"Numele afișat poate avea cel mult {MaxDisplayNameLength} de caractere.");
+    }
+
+    private static string BuildHostId(string displayName) =>
+        "host_" + Uri.EscapeDataString(displayName.ToLowerInvariant());
+
+    private static string BuildPlayerId(string displayName) =>
+        "usr_" + Uri.EscapeDataString(displayName.ToLowerInvariant());
 }

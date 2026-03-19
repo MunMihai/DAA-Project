@@ -4,7 +4,7 @@ using Quiz.CodingConsole;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-var apiKey = "gsk_....";
+var apiKey = "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";
 var model = "llama-3.3-70b-versatile";
 var groq = new GroqClient(apiKey, model);
 

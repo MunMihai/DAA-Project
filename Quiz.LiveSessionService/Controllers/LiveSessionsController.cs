@@ -9,10 +9,12 @@ namespace Quiz.LiveSessionService.Controllers;
 public sealed class LiveSessionsController(
     LiveSessionStateStore store,
     QuizServiceClient quizClient,
+    LiveQuizHistoryService history,
     ILogger<LiveSessionsController> log
 ) : ControllerBase
 {
     private const string Chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private const int SessionCodeLength = 6;
 
     /// <summary>Create a new live session. The host must subsequently join via SignalR.</summary>
     [HttpPost]
@@ -21,33 +23,35 @@ public sealed class LiveSessionsController(
         [FromHeader(Name = "X-Host-Id")] string? hostHint = null,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(req.QuizId))
-            return BadRequest(new { message = "QuizId is required." });
+        var quizId = req.QuizId?.Trim();
+        if (string.IsNullOrWhiteSpace(quizId))
+            return BadRequest(new { message = "QuizId este obligatoriu." });
 
         // Verify quiz exists and is published
         try
         {
-            var exists = await quizClient.QuizExistsAndPublished(req.QuizId, ct);
+            var exists = await quizClient.QuizExistsAndPublished(quizId, ct);
             if (!exists)
-                return BadRequest(new { message = "Quiz not found or not published." });
+                return BadRequest(new { message = "Quiz-ul nu există sau nu este publicat." });
         }
         catch (Exception ex)
         {
-            log.LogWarning(ex, "QuizService check failed for {QuizId}", req.QuizId);
-            return StatusCode(503, new { message = "Quiz service temporarily unavailable." });
+            log.LogWarning(ex, "QuizService check failed for {QuizId}", quizId);
+            return StatusCode(503, new { message = "Serviciul de quiz nu este disponibil momentan." });
         }
 
-        var code = GenerateCode();
+        var code = await GenerateUniqueCode(ct);
 
         // hostConnectionId will be set properly when host calls Hub.Join()
         // We use a placeholder; hub will set real connection id on join
-        await store.CreateSession(code, req.QuizId.Trim(), "__pending__");
+        await store.CreateSession(code, quizId, "__pending__");
+        await history.RecordSessionCreatedAsync(code, quizId, ct);
 
-        log.LogInformation("Created live session {Code} for quiz {QuizId}", code, req.QuizId);
+        log.LogInformation("Created live session {Code} for quiz {QuizId}", code, quizId);
 
         return Ok(new CreateLiveSessionResponse(
             SessionCode: code,
-            QuizId: req.QuizId.Trim(),
+            QuizId: quizId,
             HubUrl: "/hubs/live-quiz",
             CreatedAt: DateTimeOffset.UtcNow
         ));
@@ -57,9 +61,12 @@ public sealed class LiveSessionsController(
     [HttpGet("{code}")]
     public async Task<IActionResult> GetInfo(string code, CancellationToken ct)
     {
-        code = code.Trim().ToUpperInvariant();
+        code = NormalizeCode(code);
+        if (!IsValidCode(code))
+            return BadRequest(new { message = "Codul sesiunii este invalid." });
+
         var info = await store.GetSessionInfo(code);
-        if (info is null) return NotFound(new { message = "Session not found." });
+        if (info is null) return NotFound(new { message = "Sesiunea nu există." });
 
         var players = await store.GetPlayers(code);
         var leaderboard = await store.GetLeaderboard(code);
@@ -78,6 +85,25 @@ public sealed class LiveSessionsController(
         });
     }
 
+    [HttpGet("history")]
+    public async Task<IActionResult> GetHistory(CancellationToken ct)
+    {
+        var items = await history.GetHistoryAsync(ct);
+        return Ok(items);
+    }
+
+    [HttpGet("history/{code}")]
+    public async Task<IActionResult> GetHistoryDetail(string code, CancellationToken ct)
+    {
+        code = NormalizeCode(code);
+        if (!IsValidCode(code))
+            return BadRequest(new { message = "Codul sesiunii este invalid." });
+
+        var item = await history.GetHistoryDetailAsync(code, ct);
+        if (item is null) return NotFound(new { message = "Istoricul sesiunii nu există." });
+        return Ok(item);
+    }
+
     /// <summary>Register host — called by the host client after creating the session,
     /// before connecting via SignalR. Returns a token used to identify the host connection.
     /// In this simplified flow the first player who joins with this code gets host privileges
@@ -85,12 +111,30 @@ public sealed class LiveSessionsController(
     [HttpPost("{code}/set-host")]
     public async Task<IActionResult> SetHost(string code, [FromBody] SetHostRequest req)
     {
-        code = code.Trim().ToUpperInvariant();
+        code = NormalizeCode(code);
+        if (!IsValidCode(code))
+            return BadRequest(new { message = "Codul sesiunii este invalid." });
+        if (string.IsNullOrWhiteSpace(req.ConnectionId))
+            return BadRequest(new { message = "ConnectionId este obligatoriu." });
+
         if (!await store.SessionExists(code))
-            return NotFound(new { message = "Session not found." });
+            return NotFound(new { message = "Sesiunea nu există." });
 
         // Will be confirmed in hub when host joins
         return Ok(new { sessionCode = code, hostHint = req.ConnectionId });
+    }
+
+    private async Task<string> GenerateUniqueCode(CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var code = GenerateCode();
+            if (!await store.SessionExists(code))
+                return code;
+        }
+
+        throw new InvalidOperationException("Nu pot genera un cod unic de sesiune.");
     }
 
     private static string GenerateCode()
@@ -98,6 +142,11 @@ public sealed class LiveSessionsController(
         var rnd = Random.Shared;
         return new string(Enumerable.Range(0, 6).Select(_ => Chars[rnd.Next(Chars.Length)]).ToArray());
     }
+
+    private static string NormalizeCode(string code) => (code ?? "").Trim().ToUpperInvariant();
+
+    private static bool IsValidCode(string code) =>
+        code.Length == SessionCodeLength && code.All(ch => char.IsLetterOrDigit(ch));
 }
 
 public sealed record CreateLiveSessionRequest(string QuizId);

@@ -302,15 +302,37 @@ function QuestionPlayer({
 }
 
 // ── Join form ─────────────────────────────────────────────────────────────────
-function JoinForm({ defaultCode, onJoin }: { defaultCode: string; onJoin: (code: string, name: string) => void }) {
+function JoinForm({
+    defaultCode,
+    defaultName,
+    onJoin,
+}: {
+    defaultCode: string;
+    defaultName: string;
+    onJoin: (code: string, name: string) => void;
+}) {
     const { user } = useAuth();
     const [code, setCode] = useState(defaultCode);
-    const [name, setName] = useState(user?.email?.split("@")[0] ?? "");
+    const [name, setName] = useState(defaultName || (user?.email?.split("@")[0] ?? ""));
     const [err, setErr] = useState("");
 
     const handleSubmit = () => {
-        if (code.trim().length < 4) { setErr("Codul trebuie să aibă cel puțin 4 caractere."); return; }
-        if (!name.trim()) { setErr("Introdu un nume de afișare."); return; }
+        const normalizedCode = code.trim().toUpperCase();
+        const normalizedName = name.trim();
+
+        if (!/^[A-Z0-9]{6}$/.test(normalizedCode)) {
+            setErr("Codul trebuie să aibă exact 6 caractere alfanumerice.");
+            return;
+        }
+        if (!normalizedName) {
+            setErr("Introdu un nume de afișare.");
+            return;
+        }
+        if (normalizedName.length > 50) {
+            setErr("Numele de afișare poate avea cel mult 50 de caractere.");
+            return;
+        }
+
         onJoin(code.trim().toUpperCase(), name.trim());
     };
 
@@ -337,7 +359,7 @@ function JoinForm({ defaultCode, onJoin }: { defaultCode: string; onJoin: (code:
                         </label>
                         <input
                             value={code}
-                            onChange={e => setCode(e.target.value.toUpperCase())}
+                            onChange={e => { setCode(e.target.value.toUpperCase()); setErr(""); }}
                             onKeyDown={e => e.key === "Enter" && handleSubmit()}
                             placeholder="ex: AB3X7K"
                             maxLength={6}
@@ -351,9 +373,10 @@ function JoinForm({ defaultCode, onJoin }: { defaultCode: string; onJoin: (code:
                         </label>
                         <input
                             value={name}
-                            onChange={e => setName(e.target.value)}
+                            onChange={e => { setName(e.target.value); setErr(""); }}
                             onKeyDown={e => e.key === "Enter" && handleSubmit()}
                             placeholder="Cum vrei să apari în clasament"
+                            maxLength={50}
                             className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-100"
                         />
                     </div>
@@ -385,6 +408,7 @@ export function JoinLivePage() {
     const [sessionCode, setSessionCode] = useState(codeParam?.toUpperCase() ?? "");
     const [displayName, setDisplayName] = useState(user?.email?.split("@")[0] ?? "");
     const [joined, setJoined] = useState(false);
+    const [hasEstablishedSession, setHasEstablishedSession] = useState(false);
     const [myConnectionId] = useState(() => Math.random().toString(36).slice(2));
 
     const { state, submitAnswer, fetchNextQuestion } = useLiveSession(
@@ -396,15 +420,33 @@ export function JoinLivePage() {
     const handleJoin = (code: string, name: string) => {
         setSessionCode(code);
         setDisplayName(name);
+        setHasEstablishedSession(false);
         setJoined(true);
         nav(`/app/live/join/${code}`, { replace: true });
     };
+
+    useEffect(() => {
+        if (state.status === "lobby" || state.status === "running" || state.status === "ended") {
+            setHasEstablishedSession(true);
+        }
+    }, [state.status]);
+
+    useEffect(() => {
+        if (!joined) {
+            setHasEstablishedSession(false);
+            return;
+        }
+
+        if (!hasEstablishedSession && state.status === "error") {
+            setJoined(false);
+        }
+    }, [joined, hasEstablishedSession, state.status]);
 
     // ── Not joined ────────────────────────────────────────────────────────────
     if (!joined) {
         return (
             <div className="flex min-h-[60vh] items-center justify-center px-4">
-                <JoinForm defaultCode={codeParam ?? ""} onJoin={handleJoin} />
+                <JoinForm defaultCode={codeParam ?? ""} defaultName={displayName} onJoin={handleJoin} />
             </div>
         );
     }
