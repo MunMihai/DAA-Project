@@ -72,6 +72,7 @@ using (var scope = app.Services.CreateScope())
     var compileTemplates = scope.ServiceProvider.GetRequiredService<CompileCodingTemplateService>();
     await compileTemplates.DropLegacyTemplateIndexesAsync();
     await compileTemplates.MigrateLegacyTemplateDocumentsAsync();
+    await compileTemplates.DeduplicateTemplatesAsync();
     await MongoIndexes.EnsureAsync(mongo);
 }
 

@@ -164,6 +164,20 @@ function formatTemplateDate(value: string) {
     }).format(new Date(value));
 }
 
+function dedupeTemplates(templates: CompileCodingTemplate[]) {
+    const seen = new Set<string>();
+    const result: CompileCodingTemplate[] = [];
+
+    for (const template of templates) {
+        const key = template.fingerprint || template.slug || template.id;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        result.push(template);
+    }
+
+    return result;
+}
+
 function CreateSessionStep({ onCreate }: { onCreate: (code: string) => void }) {
     const api = useApi();
     const compileApi = useMemo(() => compileCodingApi(api), [api]);
@@ -188,7 +202,7 @@ function CreateSessionStep({ onCreate }: { onCreate: (code: string) => void }) {
 
             try {
                 const data = await compileApi.getTemplates();
-                if (!cancelled) setTemplates(data);
+                if (!cancelled) setTemplates(dedupeTemplates(data));
             } catch {
                 if (!cancelled) {
                     setTemplates([]);

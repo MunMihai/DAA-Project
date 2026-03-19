@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Quiz.CodingService.Data;
 using Quiz.CodingService.Models;
@@ -57,6 +58,62 @@ public sealed class CompileCodingTemplateService(MongoContext db)
                 Builders<BsonDocument>.Filter.Eq("_id", rawDocument["_id"]),
                 normalized,
                 cancellationToken: ct);
+        }
+    }
+
+    public async Task DeduplicateTemplatesAsync(CancellationToken ct = default)
+    {
+        var rawDocuments = await db.CompileTemplateDocuments
+            .Find(FilterDefinition<BsonDocument>.Empty)
+            .ToListAsync(ct);
+
+        if (rawDocuments.Count <= 1)
+            return;
+
+        var prepared = rawDocuments
+            .Select(raw =>
+            {
+                var normalized = NormalizeDocument(raw);
+                var template = BsonSerializer.Deserialize<CompileCodingTemplate>(normalized);
+                var canonical = NormalizeTemplate(template);
+                var key = !string.IsNullOrWhiteSpace(canonical.Fingerprint)
+                    ? canonical.Fingerprint
+                    : canonical.Slug;
+
+                return new
+                {
+                    Raw = raw,
+                    Canonical = canonical,
+                    Key = key,
+                    UpdatedAt = canonical.UpdatedAt,
+                    CreatedAt = canonical.CreatedAt
+                };
+            })
+            .ToList();
+
+        foreach (var group in prepared.GroupBy(item => item.Key))
+        {
+            var winner = group
+                .OrderByDescending(item => item.UpdatedAt)
+                .ThenByDescending(item => item.CreatedAt)
+                .First();
+
+            var winnerTemplate = winner.Canonical;
+            winnerTemplate.Id = winner.Raw["_id"].AsObjectId.ToString();
+            winnerTemplate.CreatedAt = group.Min(item => item.Canonical.CreatedAt);
+            winnerTemplate.UpdatedAt = group.Max(item => item.Canonical.UpdatedAt);
+
+            await db.CompileTemplateDocuments.ReplaceOneAsync(
+                Builders<BsonDocument>.Filter.Eq("_id", winner.Raw["_id"]),
+                winnerTemplate.ToBsonDocument(),
+                cancellationToken: ct);
+
+            foreach (var duplicate in group.Where(item => !item.Raw["_id"].Equals(winner.Raw["_id"])))
+            {
+                await db.CompileTemplateDocuments.DeleteOneAsync(
+                    Builders<BsonDocument>.Filter.Eq("_id", duplicate.Raw["_id"]),
+                    ct);
+            }
         }
     }
 
@@ -335,6 +392,59 @@ console.log(a + b);
 
         normalized = normalized.Trim('-');
         return string.IsNullOrWhiteSpace(normalized) ? "compile-template" : normalized;
+    }
+
+    private static CompileCodingTemplate NormalizeTemplate(CompileCodingTemplate template)
+    {
+        var normalizedTasks = template.Tasks.Select(task => new CompileCodingTemplateTask
+        {
+            Id = string.IsNullOrWhiteSpace(task.Id) ? Guid.NewGuid().ToString("N") : task.Id.Trim(),
+            Title = task.Title.Trim(),
+            ProblemStatement = task.ProblemStatement.Trim(),
+            InputDescription = task.InputDescription.Trim(),
+            OutputDescription = task.OutputDescription.Trim(),
+            ExampleInput = task.ExampleInput ?? "",
+            ExampleOutput = task.ExampleOutput ?? "",
+            Points = task.Points <= 0 ? 100 : task.Points,
+            TestCases = task.TestCases.Select(testCase => new CompileCodingTemplateCase
+            {
+                Input = testCase.Input ?? "",
+                ExpectedOutput = testCase.ExpectedOutput ?? "",
+                IsExample = testCase.IsExample
+            }).ToList(),
+            ExampleSolutions = task.ExampleSolutions.Select(solution => new CompileCodingExampleSolution
+            {
+                Language = CompileCodingLanguages.Normalize(solution.Language),
+                SourceCode = solution.SourceCode ?? "",
+                Notes = solution.Notes ?? ""
+            }).ToList()
+        }).ToList();
+
+        var fingerprint = BuildFingerprint(
+            template.Title,
+            template.SuggestedTimeLimitSeconds,
+            template.AllowedLanguages,
+            normalizedTasks);
+
+        return new CompileCodingTemplate
+        {
+            Id = template.Id,
+            Slug = $"{Slugify(template.Title)}-{fingerprint[..8].ToLowerInvariant()}",
+            Fingerprint = fingerprint,
+            Title = template.Title.Trim(),
+            Description = string.IsNullOrWhiteSpace(template.Description)
+                ? "Configurație salvată automat dintr-o sesiune Live Coding (Compile)."
+                : template.Description.Trim(),
+            SuggestedTimeLimitSeconds = template.SuggestedTimeLimitSeconds <= 0 ? 900 : template.SuggestedTimeLimitSeconds,
+            AllowedLanguages = template.AllowedLanguages
+                .Select(CompileCodingLanguages.Normalize)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct()
+                .ToList(),
+            Tasks = normalizedTasks,
+            CreatedAt = template.CreatedAt == default ? DateTimeOffset.UtcNow : template.CreatedAt,
+            UpdatedAt = template.UpdatedAt == default ? DateTimeOffset.UtcNow : template.UpdatedAt
+        };
     }
 
     private static BsonDocument NormalizeDocument(BsonDocument document)
