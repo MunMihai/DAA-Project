@@ -36,7 +36,7 @@ export type LiveCompileCodingState = {
     lastAck: CompileSolutionAck | null;
 };
 
-const HUB_URL = "http://localhost:5000";
+const HUB_URL = "/coding-hubs/live-compile-coding";
 const SESSION_CODE_REGEX = /^[A-Z0-9]{6}$/;
 const MAX_DISPLAY_NAME_LENGTH = 50;
 
@@ -114,7 +114,7 @@ export function useLiveCompileCodingSession(
         setState({ ...initialState, status: "connecting" });
 
         const conn = new signalR.HubConnectionBuilder()
-            .withUrl(`${HUB_URL}/coding-hubs/live-compile-coding`)
+            .withUrl(HUB_URL)
             .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
             .configureLogging(signalR.LogLevel.Warning)
             .build();

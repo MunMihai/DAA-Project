@@ -11,6 +11,8 @@ namespace Quiz.CodingService.Services;
 
 public sealed class CompileCodingTemplateService(MongoContext db)
 {
+    private sealed record TemplateSnapshot(ObjectId Id, CompileCodingTemplate Template);
+
     public async Task DropLegacyTemplateIndexesAsync(CancellationToken ct = default)
     {
         var cursor = await db.CompileTemplateDocuments.Indexes.ListAsync(ct);
@@ -119,11 +121,16 @@ public sealed class CompileCodingTemplateService(MongoContext db)
 
     public async Task<List<CompileCodingTemplate>> GetTemplatesAsync(CancellationToken ct = default)
     {
-        return await db.CompileTemplates
-            .Find(FilterDefinition<CompileCodingTemplate>.Empty)
-            .SortByDescending(x => x.UpdatedAt)
-            .ThenBy(x => x.Title)
-            .ToListAsync(ct);
+        return (await LoadTemplateSnapshotsAsync(ct))
+            .GroupBy(item => item.Template.Fingerprint)
+            .Select(group => group
+                .OrderByDescending(item => item.Template.UpdatedAt)
+                .ThenByDescending(item => item.Template.CreatedAt)
+                .First()
+                .Template)
+            .OrderByDescending(template => template.UpdatedAt)
+            .ThenBy(template => template.Title)
+            .ToList();
     }
 
     public async Task<CompileCodingTemplate> SaveSessionTemplateAsync(
@@ -132,66 +139,14 @@ public sealed class CompileCodingTemplateService(MongoContext db)
     {
         var now = DateTimeOffset.UtcNow;
         var template = BuildTemplateFromDefinition(definition, now);
-
-        var filter = Builders<CompileCodingTemplate>.Filter.Or(
-            Builders<CompileCodingTemplate>.Filter.Eq(x => x.Fingerprint, template.Fingerprint),
-            Builders<CompileCodingTemplate>.Filter.Eq(x => x.Slug, template.Slug));
-        var existing = await db.CompileTemplates.Find(filter).FirstOrDefaultAsync(ct);
-
-        if (existing is null)
-        {
-            await db.CompileTemplates.InsertOneAsync(template, cancellationToken: ct);
-            return template;
-        }
-
-        template.Id = existing.Id;
-        template.CreatedAt = existing.CreatedAt;
-
-        var update = Builders<CompileCodingTemplate>.Update
-            .Set(x => x.Fingerprint, template.Fingerprint)
-            .Set(x => x.Slug, template.Slug)
-            .Set(x => x.Title, template.Title)
-            .Set(x => x.Description, template.Description)
-            .Set(x => x.SuggestedTimeLimitSeconds, template.SuggestedTimeLimitSeconds)
-            .Set(x => x.AllowedLanguages, template.AllowedLanguages)
-            .Set(x => x.Tasks, template.Tasks)
-            .Set(x => x.UpdatedAt, now);
-
-        await db.CompileTemplates.UpdateOneAsync(filter, update, cancellationToken: ct);
-        template.UpdatedAt = now;
-        return template;
+        return await UpsertTemplateAsync(template, ct);
     }
 
     public async Task<CompileCodingTemplate> RunSeedAsync(CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;
         var template = BuildDemoTemplate(now);
-
-        var filter = Builders<CompileCodingTemplate>.Filter.Eq(x => x.Slug, template.Slug);
-        var existing = await db.CompileTemplates.Find(filter).FirstOrDefaultAsync(ct);
-
-        if (existing is null)
-        {
-            await db.CompileTemplates.InsertOneAsync(template, cancellationToken: ct);
-            return template;
-        }
-
-        template.Id = existing.Id;
-        template.CreatedAt = existing.CreatedAt;
-
-        var update = Builders<CompileCodingTemplate>.Update
-            .Set(x => x.Fingerprint, template.Fingerprint)
-            .Set(x => x.Title, template.Title)
-            .Set(x => x.Description, template.Description)
-            .Set(x => x.SuggestedTimeLimitSeconds, template.SuggestedTimeLimitSeconds)
-            .Set(x => x.AllowedLanguages, template.AllowedLanguages)
-            .Set(x => x.Tasks, template.Tasks)
-            .Set(x => x.UpdatedAt, now);
-
-        await db.CompileTemplates.UpdateOneAsync(filter, update, cancellationToken: ct);
-
-        template.UpdatedAt = now;
-        return template;
+        return await UpsertTemplateAsync(template, ct);
     }
 
     private static CompileCodingTemplate BuildTemplateFromDefinition(CompileCodingSessionDefinition definition, DateTimeOffset now)
@@ -365,13 +320,7 @@ console.log(a + b);
                 outputDescription = task.OutputDescription.Trim(),
                 exampleInput = task.ExampleInput ?? "",
                 exampleOutput = task.ExampleOutput ?? "",
-                points = task.Points,
-                testCases = task.TestCases.Select(testCase => new
-                {
-                    input = testCase.Input ?? "",
-                    expectedOutput = testCase.ExpectedOutput ?? "",
-                    isExample = testCase.IsExample
-                }).ToList()
+                points = task.Points
             }).ToList()
         };
 
@@ -444,6 +393,105 @@ console.log(a + b);
             Tasks = normalizedTasks,
             CreatedAt = template.CreatedAt == default ? DateTimeOffset.UtcNow : template.CreatedAt,
             UpdatedAt = template.UpdatedAt == default ? DateTimeOffset.UtcNow : template.UpdatedAt
+        };
+    }
+
+    private async Task<List<TemplateSnapshot>> LoadTemplateSnapshotsAsync(CancellationToken ct)
+    {
+        var rawDocuments = await db.CompileTemplateDocuments
+            .Find(FilterDefinition<BsonDocument>.Empty)
+            .ToListAsync(ct);
+
+        return rawDocuments.Select(raw =>
+        {
+            var normalized = NormalizeDocument(raw);
+            var template = NormalizeTemplate(BsonSerializer.Deserialize<CompileCodingTemplate>(normalized));
+            template.Id = raw["_id"].AsObjectId.ToString();
+            return new TemplateSnapshot(raw["_id"].AsObjectId, template);
+        }).ToList();
+    }
+
+    private async Task<CompileCodingTemplate> UpsertTemplateAsync(CompileCodingTemplate template, CancellationToken ct)
+    {
+        var normalized = NormalizeTemplate(template);
+        var snapshots = await LoadTemplateSnapshotsAsync(ct);
+        var matchingSnapshots = snapshots
+            .Where(item => item.Template.Fingerprint == normalized.Fingerprint || item.Template.Slug == normalized.Slug)
+            .ToList();
+
+        if (matchingSnapshots.Count == 0)
+        {
+            await db.CompileTemplateDocuments.InsertOneAsync(normalized.ToBsonDocument(), cancellationToken: ct);
+            return normalized;
+        }
+
+        var winner = matchingSnapshots
+            .OrderByDescending(item => item.Template.UpdatedAt)
+            .ThenByDescending(item => item.Template.CreatedAt)
+            .First();
+
+        var merged = MergeTemplates(winner.Template, normalized);
+        merged.Id = winner.Id.ToString();
+        merged.CreatedAt = matchingSnapshots.Min(item => item.Template.CreatedAt);
+        merged.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await db.CompileTemplateDocuments.ReplaceOneAsync(
+            Builders<BsonDocument>.Filter.Eq("_id", winner.Id),
+            merged.ToBsonDocument(),
+            cancellationToken: ct);
+
+        foreach (var duplicate in matchingSnapshots.Where(item => item.Id != winner.Id))
+        {
+            await db.CompileTemplateDocuments.DeleteOneAsync(
+                Builders<BsonDocument>.Filter.Eq("_id", duplicate.Id),
+                ct);
+        }
+
+        return merged;
+    }
+
+    private static CompileCodingTemplate MergeTemplates(
+        CompileCodingTemplate existing,
+        CompileCodingTemplate incoming)
+    {
+        var existingTasksByTitle = existing.Tasks.ToDictionary(task => task.Title.Trim(), StringComparer.OrdinalIgnoreCase);
+
+        var mergedTasks = incoming.Tasks.Select(incomingTask =>
+        {
+            if (!existingTasksByTitle.TryGetValue(incomingTask.Title.Trim(), out var existingTask))
+                return incomingTask;
+
+            return new CompileCodingTemplateTask
+            {
+                Id = existingTask.Id,
+                Title = incomingTask.Title,
+                ProblemStatement = incomingTask.ProblemStatement,
+                InputDescription = incomingTask.InputDescription,
+                OutputDescription = incomingTask.OutputDescription,
+                ExampleInput = incomingTask.ExampleInput,
+                ExampleOutput = incomingTask.ExampleOutput,
+                Points = incomingTask.Points,
+                TestCases = existingTask.TestCases.Count > incomingTask.TestCases.Count
+                    ? existingTask.TestCases
+                    : incomingTask.TestCases,
+                ExampleSolutions = existingTask.ExampleSolutions.Count > incomingTask.ExampleSolutions.Count
+                    ? existingTask.ExampleSolutions
+                    : incomingTask.ExampleSolutions
+            };
+        }).ToList();
+
+        return new CompileCodingTemplate
+        {
+            Id = existing.Id,
+            Slug = existing.Slug,
+            Fingerprint = incoming.Fingerprint,
+            Title = incoming.Title,
+            Description = string.IsNullOrWhiteSpace(existing.Description) ? incoming.Description : existing.Description,
+            SuggestedTimeLimitSeconds = incoming.SuggestedTimeLimitSeconds,
+            AllowedLanguages = incoming.AllowedLanguages,
+            Tasks = mergedTasks,
+            CreatedAt = existing.CreatedAt,
+            UpdatedAt = incoming.UpdatedAt
         };
     }
 

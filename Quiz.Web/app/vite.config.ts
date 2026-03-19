@@ -20,6 +20,11 @@ export default defineConfig({
                 changeOrigin: true,
                 ws: true, // Enable WebSocket proxy for SignalR
             },
+            '/coding-hubs': {
+                target: 'http://localhost:5000',
+                changeOrigin: true,
+                ws: true,
+            },
         },
     },
     preview: {
