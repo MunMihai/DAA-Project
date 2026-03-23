@@ -65,6 +65,7 @@ app.UseCors("api");
 app.MapControllers();
 app.MapHub<LiveCodingHub>("/coding-hubs/live-coding").RequireCors("signalr");
 app.MapHub<LiveCompileCodingHub>("/coding-hubs/live-compile-coding").RequireCors("signalr");
+app.MapGet("/healthz", () => Results.Ok(new { ok = true, service = "CodingService" }));
 
 using (var scope = app.Services.CreateScope())
 {

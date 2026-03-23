@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Quiz.AuthService.DTOs;
@@ -12,7 +15,9 @@ public sealed class AuthController(
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,
     RoleManager<ApplicationRole> roleManager,
-    IJwtTokenService jwt
+    IJwtTokenService jwt,
+    IHostEnvironment environment,
+    IConfiguration configuration
 ) : ControllerBase
 {
     [HttpPost("signup")]
@@ -68,6 +73,26 @@ public sealed class AuthController(
     [HttpPost("run-seed")]
     public async Task<IActionResult> RunSeed()
     {
+        if (!environment.IsDevelopment())
+        {
+            if (!configuration.GetValue<bool>("Seed:Enabled"))
+                return NotFound();
+
+            var configuredSeedToken = configuration["Seed:Token"];
+            if (string.IsNullOrWhiteSpace(configuredSeedToken))
+            {
+                return Problem(
+                    detail: "Seed endpoint is enabled, but Seed:Token is missing.",
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            if (!Request.Headers.TryGetValue("X-Seed-Token", out var providedSeedToken) ||
+                !TokensMatch(providedSeedToken.ToString(), configuredSeedToken))
+            {
+                return Unauthorized(new { message = "Missing or invalid seed token." });
+            }
+        }
+
         var roles = new[] { "Teacher", "Student" };
         foreach (var role in roles)
         {
@@ -110,5 +135,12 @@ public sealed class AuthController(
             message = $"Seed completat. Au fost create {createdCount} conturi noi.",
             accounts = demoUsers.Select(d => new { d.Email, Password = "Password123!", d.Role })
         });
+    }
+
+    private static bool TokensMatch(string providedToken, string configuredToken)
+    {
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(providedToken),
+            Encoding.UTF8.GetBytes(configuredToken));
     }
 }

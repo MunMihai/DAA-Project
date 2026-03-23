@@ -62,6 +62,12 @@ var signingKey = jwtSection["SigningKey"] ?? throw new Exception("Jwt:SigningKey
 var issuer = jwtSection["Issuer"] ?? throw new Exception("Jwt:Issuer missing");
 var audience = jwtSection["Audience"] ?? throw new Exception("Jwt:Audience missing");
 
+if (!builder.Environment.IsDevelopment() &&
+    signingKey.StartsWith("CHANGE_ME", StringComparison.Ordinal))
+{
+    throw new Exception("Jwt:SigningKey must be overridden with a real secret outside Development.");
+}
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>
     {

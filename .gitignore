@@ -51,6 +51,7 @@ TestResults/
 
 publish/
 *.publishsettings
+.artifacts/
 
 *.mdf
 *.ldf

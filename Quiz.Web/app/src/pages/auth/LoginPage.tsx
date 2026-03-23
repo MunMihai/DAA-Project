@@ -6,6 +6,7 @@ import { toast } from "react-toastify";
 import { useApi } from "../../api/axios.tsx";
 
 export function LoginPage() {
+    const isDevelopment = import.meta.env.DEV;
     const { login } = useAuth();
     const navigate = useNavigate();
     const api = useApi();
@@ -69,34 +70,38 @@ export function LoginPage() {
             subtitle="Intră în cont pentru a continua quizurile și testele live."
         >
             <form onSubmit={onSubmit} className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-slate-500">Bază de date:</span>
-                    <button
-                        type="button"
-                        onClick={handleRunSeed}
-                        disabled={seeding}
-                        className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-200 disabled:opacity-50 dark:bg-emerald-900/30 dark:text-emerald-300"
-                    >
-                        {seeding ? "Se populează..." : "▶ Run Seed"}
-                    </button>
-                </div>
+                {isDevelopment && (
+                    <>
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-slate-500">Bază de date:</span>
+                            <button
+                                type="button"
+                                onClick={handleRunSeed}
+                                disabled={seeding}
+                                className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-200 disabled:opacity-50 dark:bg-emerald-900/30 dark:text-emerald-300"
+                            >
+                                {seeding ? "Se populează..." : "▶ Run Seed"}
+                            </button>
+                        </div>
 
-                <div className="flex flex-wrap justify-center gap-2">
-                    <button
-                        type="button"
-                        onClick={() => handleAutocomplete("Teacher")}
-                        className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
-                    >
-                        Auto Profesor
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => handleAutocomplete("Student")}
-                        className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
-                    >
-                        Auto Student
-                    </button>
-                </div>
+                        <div className="flex flex-wrap justify-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => handleAutocomplete("Teacher")}
+                                className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                            >
+                                Auto Profesor
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleAutocomplete("Student")}
+                                className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                            >
+                                Auto Student
+                            </button>
+                        </div>
+                    </>
+                )}
 
                 <div>
                     <label className="mb-1 block text-sm font-medium text-slate-800 dark:text-slate-200">
