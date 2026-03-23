@@ -55,7 +55,6 @@ publish/
 *.sqlite3
 
 docker-compose.override.yml
-*.dockerfile
 
 .azure/
 
