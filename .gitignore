@@ -24,10 +24,6 @@ coverage/
 .cache/
 *.tsbuildinfo
 
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-
 bin/
 obj/
 *.user
