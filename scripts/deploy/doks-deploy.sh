@@ -23,7 +23,7 @@ for var_name in "${required_vars[@]}"; do
 done
 
 k8s_namespace="${K8S_NAMESPACE:-quiz-platform}"
-doks_cluster_name="${DOKS_CLUSTER_NAME:-do-fra1-k8s-1-35-1-do-0-fra1-1774185110679}"
+doks_cluster_name="${DOKS_CLUSTER_NAME:-k8s-1-35-1-do-0-fra1-1774185110679}"
 docr_registry_name="${DOCR_REGISTRY_NAME:-dev-docker-registry}"
 docker_registry_region="${DOCR_REGION:-fra1}"
 docker_registry_tier="${DOCR_SUBSCRIPTION_TIER:-basic}"

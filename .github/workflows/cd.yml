@@ -14,7 +14,7 @@ on:
       - master
 
 env:
-  DOKS_CLUSTER_NAME: do-fra1-k8s-1-35-1-do-0-fra1-1774185110679
+  DOKS_CLUSTER_NAME: k8s-1-35-1-do-0-fra1-1774185110679
   DOCR_REGISTRY_NAME: dev-docker-registry
   K8S_NAMESPACE: quiz-platform
 

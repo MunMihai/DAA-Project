@@ -31,7 +31,7 @@ The DigitalOcean token used by `CD` must be allowed to access both:
 ## Workflows
 
 - `CI` runs on macOS and builds the deployable `.NET` publish outputs plus the frontend dist into `.artifacts`.
-- `CD` has a macOS packaging job that uploads `.artifacts`, then an Ubuntu deploy job that builds container images from those artifacts, pushes them to DigitalOcean Container Registry `dev-docker-registry`, applies Kubernetes manifests, refreshes the `quiz-secrets` secret, and rolls out the new image tag to the DOKS cluster `do-fra1-k8s-1-35-1-do-0-fra1-1774185110679`.
+- `CD` has a macOS packaging job that uploads `.artifacts`, then an Ubuntu deploy job that builds container images from those artifacts, pushes them to DigitalOcean Container Registry `dev-docker-registry`, applies Kubernetes manifests, refreshes the `quiz-secrets` secret, and rolls out the new image tag to the DOKS cluster `k8s-1-35-1-do-0-fra1-1774185110679`.
 - `CD` can also run the seed job after a manual `workflow_dispatch` deployment by setting the `run_seed` input to `true`.
 - `scripts/deploy/run-seed.sh` creates a short-lived Kubernetes `Job` inside the cluster that calls the internal seed endpoints for `authservice` and `codingservice` using the secret `SEED_API_TOKEN`. The seed UI remains hidden in production.
 
@@ -69,7 +69,7 @@ Optional overrides:
 ```bash
 export MONGO_ROOT_USERNAME=quiz_root
 export RABBITMQ_USERNAME=quiz_app
-export DOKS_CLUSTER_NAME=do-fra1-k8s-1-35-1-do-0-fra1-1774185110679
+export DOKS_CLUSTER_NAME=k8s-1-35-1-do-0-fra1-1774185110679
 export DOCR_REGISTRY_NAME=dev-docker-registry
 export DOCR_REGION=fra1
 export DOCR_SUBSCRIPTION_TIER=basic
