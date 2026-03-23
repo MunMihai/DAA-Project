@@ -53,10 +53,23 @@ fi
 
 doctl auth init -t "${DIGITALOCEAN_ACCESS_TOKEN}"
 
-if ! doctl registry get "${docr_registry_name}" >/dev/null 2>&1; then
-  doctl registry create "${docr_registry_name}" \
-    --region "${docker_registry_region}" \
-    --subscription-tier "${docker_registry_tier}"
+registry_get_output=""
+if ! registry_get_output="$(doctl registry get "${docr_registry_name}" 2>&1)"; then
+  if grep -qi "not authorized" <<<"${registry_get_output}"; then
+    echo "DigitalOcean token cannot access Container Registry '${docr_registry_name}'." >&2
+    echo "Update DIGITALOCEAN_ACCESS_TOKEN with a token from the DigitalOcean account/team that owns the registry and cluster." >&2
+    echo "The token must be allowed to use both Kubernetes and Container Registry." >&2
+    exit 1
+  fi
+
+  if grep -qi "404" <<<"${registry_get_output}"; then
+    doctl registry create "${docr_registry_name}" \
+      --region "${docker_registry_region}" \
+      --subscription-tier "${docker_registry_tier}"
+  else
+    echo "${registry_get_output}" >&2
+    exit 1
+  fi
 fi
 
 doctl registry login --expiry-seconds 1800
