@@ -78,6 +78,26 @@ function MiniLeaderboard({ entries, myId }: { entries: LeaderboardEntry[]; myId:
     );
 }
 
+function TaskCard({ title, description }: { title?: string | null; description?: string | null }) {
+    if (!title && !description) return null;
+
+    return (
+        <div className="rounded-3xl border border-slate-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
+            <div className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-300">
+                Sarcina sesiunii
+            </div>
+            <div className="mt-2 text-lg font-bold text-slate-900 dark:text-white">
+                {title || "Live Coding (Rule Based)"}
+            </div>
+            {description && (
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">
+                    {description}
+                </p>
+            )}
+        </div>
+    );
+}
+
 function JoinForm({
     defaultCode,
     defaultName,
@@ -309,6 +329,7 @@ export function JoinLiveCodingPage() {
     if (state.status === "lobby") {
         return (
             <div className="mx-auto max-w-sm py-8 text-center space-y-6">
+                <TaskCard title={state.taskTitle} description={state.taskDescription} />
                 <div className="rounded-3xl border border-slate-900/10 bg-white p-8 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
                     <div className="text-5xl mb-4">🎯</div>
                     <div className="text-xl font-extrabold text-slate-900 dark:text-white">
@@ -371,6 +392,8 @@ export function JoinLiveCodingPage() {
                         </div>
                     </div>
 
+                    <TaskCard title={state.taskTitle} description={state.taskDescription} />
+
                     <div className="rounded-3xl border border-slate-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
                         <textarea
                             className="w-full h-80 p-4 border rounded-xl font-mono text-sm bg-slate-50 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-950 dark:border-white/10 dark:text-slate-100 placeholder-slate-400"
@@ -397,13 +420,19 @@ export function JoinLiveCodingPage() {
                                 {state.lastAck.passed ? "Cod evaluat cu succes!" : "Eroare de validare sau compilare"}
                             </h3>
                             {!state.lastAck.passed && state.lastAck.violations?.length > 0 && (
-                                <ul className="list-disc pl-5 mt-2 space-y-1">
+                                <div className="mt-4 space-y-3">
                                     {state.lastAck.violations.map((v, i) => (
-                                        <li key={i} className="text-sm text-red-800 dark:text-red-300">
-                                            <strong>[{v.ruleId}]</strong> {v.message}
-                                        </li>
+                                        <div
+                                            key={i}
+                                            className="rounded-2xl border border-red-200 bg-white/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-slate-950/30 dark:text-red-200"
+                                        >
+                                            <div className="font-medium leading-6">{v.message}</div>
+                                            <div className="mt-2 text-[11px] uppercase tracking-wide text-red-500 dark:text-red-400">
+                                                Regula: {v.ruleId}
+                                            </div>
+                                        </div>
                                     ))}
-                                </ul>
+                                </div>
                             )}
                         </div>
                     )}

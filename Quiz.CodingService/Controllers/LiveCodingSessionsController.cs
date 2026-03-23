@@ -25,6 +25,12 @@ public sealed class LiveCodingSessionsController(
     {
         if (req.Ruleset == null)
             return BadRequest(new { message = "Ruleset-ul este obligatoriu." });
+        if (string.IsNullOrWhiteSpace(req.ReferenceCode))
+            return BadRequest(new { message = "Codul de referință este obligatoriu pentru validarea sesiunii." });
+        if (string.IsNullOrWhiteSpace(req.TaskTitle))
+            return BadRequest(new { message = "Titlul sarcinii este obligatoriu." });
+        if (string.IsNullOrWhiteSpace(req.TaskDescription))
+            return BadRequest(new { message = "Descrierea sarcinii este obligatorie." });
         if (string.IsNullOrWhiteSpace(req.Ruleset.name))
             return BadRequest(new { message = "Ruleset-ul trebuie să aibă un nume." });
         if (string.IsNullOrWhiteSpace(req.Ruleset.language))
@@ -36,10 +42,20 @@ public sealed class LiveCodingSessionsController(
         if (req.TimeLimitSeconds < MinTimeLimitSeconds || req.TimeLimitSeconds > MaxTimeLimitSeconds)
             return BadRequest(new { message = $"Timpul limită trebuie să fie între {MinTimeLimitSeconds} și {MaxTimeLimitSeconds} secunde." });
 
+        var validation = RuleBasedRulesetValidator.ValidateReferenceCode(req.ReferenceCode, req.Ruleset);
+        if (!validation.Passed)
+        {
+            return BadRequest(new
+            {
+                message = "Ruleset-ul nu validează codul de referință. Regenerază draftul sau corectează regulile înainte de publicare.",
+                violations = validation.Violations
+            });
+        }
+
         var code = await GenerateUniqueCode(ct);
 
-        await store.CreateSession(code, req.Ruleset, req.TimeLimitSeconds);
-        await history.RecordSessionCreatedAsync(code, req.Ruleset, req.TimeLimitSeconds, ct);
+        await store.CreateSession(code, req.Ruleset, req.TimeLimitSeconds, req.TaskTitle.Trim(), req.TaskDescription.Trim());
+        await history.RecordSessionCreatedAsync(code, req.TaskTitle.Trim(), req.Ruleset, req.TimeLimitSeconds, ct);
 
         log.LogInformation("Created live coding session {Code}", code);
 
@@ -133,7 +149,13 @@ public sealed class LiveCodingSessionsController(
         code.Length == SessionCodeLength && code.All(ch => char.IsLetterOrDigit(ch));
 }
 
-public sealed record CreateLiveCodingSessionRequest(Ruleset Ruleset, int TimeLimitSeconds);
+public sealed record CreateLiveCodingSessionRequest(
+    string ReferenceCode,
+    string TaskTitle,
+    string TaskDescription,
+    Ruleset Ruleset,
+    int TimeLimitSeconds
+);
 public sealed record SetCodingHostRequest(string ConnectionId);
 public sealed record CreateLiveCodingSessionResponse(
     string SessionCode,

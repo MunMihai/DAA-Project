@@ -21,6 +21,8 @@ export type LiveCodingState = {
     error: string | null;
     players: Player[];
     rulesetName: string | null;
+    taskTitle: string | null;
+    taskDescription: string | null;
     deadlineUtc: Date | null;
     leaderboard: LeaderboardEntry[];
     lastAck: CodeAck | null;
@@ -35,6 +37,8 @@ const initialState: LiveCodingState = {
     error: null,
     players: [],
     rulesetName: null,
+    taskTitle: null,
+    taskDescription: null,
     deadlineUtc: null,
     leaderboard: [],
     lastAck: null,
@@ -112,10 +116,12 @@ export function useLiveCodingSession(
         conn.on("lobbyUpdate", (d: { players: Player[] }) =>
             patch({ players: d.players ?? [] }));
 
-        conn.on("sessionStarted", (d: { rulesetName: string; deadlineUtc?: string }) =>
+        conn.on("sessionStarted", (d: { rulesetName: string; taskTitle?: string; taskDescription?: string; deadlineUtc?: string }) =>
             patch({
                 status: "running",
                 rulesetName: d.rulesetName ?? "Live Coding (Rule Based)",
+                taskTitle: d.taskTitle ?? d.rulesetName ?? "Live Coding (Rule Based)",
+                taskDescription: d.taskDescription ?? null,
                 deadlineUtc: d.deadlineUtc ? new Date(d.deadlineUtc) : null,
                 lastAck: null,
             }));
@@ -136,6 +142,8 @@ export function useLiveCodingSession(
             patch({
                 status: isRunning ? "running" : isEnded ? "ended" : "lobby",
                 rulesetName: d.rulesetName ?? null,
+                taskTitle: d.taskTitle ?? d.rulesetName ?? null,
+                taskDescription: d.taskDescription ?? null,
                 deadlineUtc: d.deadlineUtc ? new Date(d.deadlineUtc) : null,
                 leaderboard: d.leaderboard ?? [],
                 players: d.players ?? [],

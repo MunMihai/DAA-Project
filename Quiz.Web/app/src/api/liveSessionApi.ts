@@ -45,6 +45,7 @@ export type LiveQuizAnswerHistory = {
     questionType: number;
     prompt: string;
     submittedAnswer: string;
+    officialAnswer: string;
     isCorrect: boolean;
     pointsEarned: number;
     submittedAt: string;

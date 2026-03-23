@@ -54,16 +54,6 @@ function IconCode({ className }: { className?: string }) {
         </svg>
     );
 }
-function IconTrophy({ className }: { className?: string }) {
-    return (
-        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-            <path d="M8 4h8v3a4 4 0 0 1-8 0V4Z" className="stroke-current" strokeWidth="2" strokeLinejoin="round" />
-            <path d="M8 7H5a2 2 0 0 0 2 2h1M16 7h3a2 2 0 0 1-2 2h-1" className="stroke-current" strokeWidth="2" strokeLinecap="round" />
-            <path d="M12 11v4m-4 5h8" className="stroke-current" strokeWidth="2" strokeLinecap="round" />
-            <path d="M10 19v-2h4v2" className="stroke-current" strokeWidth="2" strokeLinejoin="round" />
-        </svg>
-    );
-}
 function IconLogout({ className }: { className?: string }) {
     return (
         <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
@@ -148,7 +138,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                 label: "Live Coding (Compile)",
                 icon: <IconCode className="h-5 w-5" />,
             },
-            { to: "/app/contests", label: "Concursuri", icon: <IconTrophy className="h-5 w-5" /> },
             { to: "/app/submissions", label: isAdmin ? "Istoric teste" : "Submisii", icon: <IconCode className="h-5 w-5" /> },
         ];
 

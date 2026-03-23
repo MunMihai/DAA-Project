@@ -38,7 +38,7 @@ export function SignupPage() {
     return (
         <AuthShell
             title="Creează cont"
-            subtitle="Începe cu quizuri și concursuri de programare."
+            subtitle="Începe cu quizuri și testele de coding disponibile în platformă."
         >
             <form onSubmit={onSubmit} className="space-y-4">
                 <div>
@@ -88,7 +88,7 @@ export function SignupPage() {
                     disabled={loading}
                     className="inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 disabled:opacity-60 dark:bg-indigo-500 dark:hover:bg-indigo-400"
                 >
-                    {loading ? "Se creează..." : "Sign up"}
+                    {loading ? "Se creează..." : "Creează cont"}
                 </button>
 
                 <p className="pt-2 text-center text-sm text-slate-700 dark:text-slate-300">
@@ -97,7 +97,7 @@ export function SignupPage() {
                         to="/login"
                         className="font-semibold text-indigo-700 hover:text-indigo-800 dark:text-indigo-300 dark:hover:text-indigo-200"
                     >
-                        Login
+                        Conectează-te
                     </Link>
                 </p>
             </form>

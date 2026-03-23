@@ -70,6 +70,7 @@ public sealed class LiveQuizHistoryService(MongoContext db)
         string displayName,
         int questionIndex,
         QuestionPublicSnapshot question,
+        QuestionCorrectSnapshot? correctQuestion,
         AnswerPayload payload,
         AnswerResult result,
         int currentScore,
@@ -85,6 +86,7 @@ public sealed class LiveQuizHistoryService(MongoContext db)
             QuestionType = question.Type,
             Prompt = question.Prompt,
             SubmittedAnswer = FormatAnswer(question, payload),
+            OfficialAnswer = FormatOfficialAnswer(question, correctQuestion),
             IsCorrect = result.IsCorrect,
             PointsEarned = result.PointsEarned,
             SubmittedAt = DateTimeOffset.UtcNow
@@ -136,7 +138,10 @@ public sealed class LiveQuizHistoryService(MongoContext db)
         )).ToList();
     }
 
-    public async Task<LiveQuizHistoryDetailDto?> GetHistoryDetailAsync(string sessionCode, CancellationToken ct = default)
+    public async Task<LiveQuizHistoryDetailDto?> GetHistoryDetailAsync(
+        string sessionCode,
+        Func<string, CancellationToken, Task<QuizSnapshot>>? fetchQuizSnapshot = null,
+        CancellationToken ct = default)
     {
         var session = await db.Sessions.Find(x => x.SessionCode == sessionCode).FirstOrDefaultAsync(ct);
         if (session is null)
@@ -152,6 +157,23 @@ public sealed class LiveQuizHistoryService(MongoContext db)
             .SortBy(x => x.DisplayName)
             .ThenBy(x => x.QuestionIndex)
             .ToListAsync(ct);
+
+        QuizSnapshot? quizSnapshot = null;
+        if (fetchQuizSnapshot is not null && !string.IsNullOrWhiteSpace(session.QuizId))
+        {
+            try
+            {
+                quizSnapshot = await fetchQuizSnapshot(session.QuizId, ct);
+            }
+            catch
+            {
+                quizSnapshot = null;
+            }
+        }
+
+        var quizQuestionsById = quizSnapshot?.Questions
+            .Where(x => !string.IsNullOrWhiteSpace(x.Id))
+            .ToDictionary(x => x.Id, StringComparer.Ordinal) ?? new Dictionary<string, QuestionSnapshot>(StringComparer.Ordinal);
 
         var detailParticipants = participants.Select(participant => new LiveQuizParticipantHistoryDto(
             participant.PlayerId,
@@ -169,6 +191,7 @@ public sealed class LiveQuizHistoryService(MongoContext db)
                     x.QuestionType,
                     x.Prompt,
                     x.SubmittedAnswer,
+                    ResolveOfficialAnswer(x, quizQuestionsById),
                     x.IsCorrect,
                     x.PointsEarned,
                     x.SubmittedAt
@@ -202,6 +225,58 @@ public sealed class LiveQuizHistoryService(MongoContext db)
         };
     }
 
+    private static string ResolveOfficialAnswer(
+        LiveQuizAnswerHistory answer,
+        IReadOnlyDictionary<string, QuestionSnapshot> quizQuestionsById)
+    {
+        if (!string.IsNullOrWhiteSpace(answer.OfficialAnswer))
+            return answer.OfficialAnswer;
+
+        return quizQuestionsById.TryGetValue(answer.QuestionId, out var question)
+            ? FormatOfficialAnswer(question)
+            : "";
+    }
+
+    private static string FormatOfficialAnswer(QuestionPublicSnapshot question, QuestionCorrectSnapshot? correctQuestion)
+    {
+        if (correctQuestion is null)
+            return "";
+
+        return FormatOfficialAnswer(
+            question.Type,
+            question.Options,
+            correctQuestion.CorrectBool,
+            correctQuestion.CorrectOptionIds,
+            correctQuestion.AcceptedAnswers);
+    }
+
+    private static string FormatOfficialAnswer(QuestionSnapshot question)
+    {
+        return FormatOfficialAnswer(
+            question.Type,
+            question.Options,
+            question.CorrectBool,
+            question.CorrectOptionIds,
+            question.AcceptedAnswers);
+    }
+
+    private static string FormatOfficialAnswer(
+        int questionType,
+        List<OptionSnapshot> options,
+        bool? correctBool,
+        List<string>? correctOptionIds,
+        List<string>? acceptedAnswers)
+    {
+        return questionType switch
+        {
+            0 => correctBool is null ? "" : (correctBool.Value ? "Adevarat" : "Fals"),
+            1 => ResolveCorrectOptions(options, correctOptionIds),
+            2 => ResolveCorrectOptions(options, correctOptionIds),
+            3 => ResolveAcceptedAnswers(acceptedAnswers),
+            _ => ""
+        };
+    }
+
     private static string ResolveSingle(QuestionPublicSnapshot question, string? optionId)
     {
         if (string.IsNullOrWhiteSpace(optionId))
@@ -220,6 +295,27 @@ public sealed class LiveQuizHistoryService(MongoContext db)
             .ToList();
 
         return string.Join(", ", texts);
+    }
+
+    private static string ResolveCorrectOptions(List<OptionSnapshot> options, List<string>? optionIds)
+    {
+        if (optionIds is null || optionIds.Count == 0)
+            return "";
+
+        var texts = optionIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => options.FirstOrDefault(x => x.Id == id)?.Text ?? id)
+            .ToList();
+
+        return texts.Count == 0 ? "" : string.Join(", ", texts);
+    }
+
+    private static string ResolveAcceptedAnswers(List<string>? acceptedAnswers)
+    {
+        if (acceptedAnswers is null || acceptedAnswers.Count == 0)
+            return "";
+
+        return string.Join(" / ", acceptedAnswers.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase));
     }
 }
 
@@ -266,6 +362,7 @@ public sealed record LiveQuizAnswerHistoryDto(
     int QuestionType,
     string Prompt,
     string SubmittedAnswer,
+    string OfficialAnswer,
     bool IsCorrect,
     int PointsEarned,
     DateTimeOffset SubmittedAt

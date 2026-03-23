@@ -50,7 +50,16 @@ function ParticipantDetailDialog({
                                 </div>
                             </div>
                             <div className="mt-3 rounded-xl bg-white px-4 py-3 text-sm text-slate-700 dark:bg-slate-950/60 dark:text-slate-200">
-                                {answer.submittedAnswer}
+                                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                    Răspuns trimis
+                                </div>
+                                <div className="mt-2">{answer.submittedAnswer}</div>
+                            </div>
+                            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-100">
+                                <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                                    Răspuns oficial corect
+                                </div>
+                                <div className="mt-2">{answer.officialAnswer || "Nu este disponibil."}</div>
                             </div>
                             <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">Trimis la {formatDate(answer.submittedAt)}</div>
                         </div>

@@ -99,7 +99,7 @@ public sealed class LiveSessionsController(
         if (!IsValidCode(code))
             return BadRequest(new { message = "Codul sesiunii este invalid." });
 
-        var item = await history.GetHistoryDetailAsync(code, ct);
+        var item = await history.GetHistoryDetailAsync(code, quizClient.FetchQuizSnapshot, ct);
         if (item is null) return NotFound(new { message = "Istoricul sesiunii nu există." });
         return Ok(item);
     }

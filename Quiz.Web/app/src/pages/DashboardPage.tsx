@@ -1,113 +1,165 @@
 import { Link } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext.tsx";
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function SectionCard({
+    title,
+    description,
+    children,
+}: {
+    title: string;
+    description?: string;
+    children: React.ReactNode;
+}) {
     return (
-        <div className="rounded-3xl border border-slate-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</div>
-            <div className="mt-3">{children}</div>
+        <div className="rounded-3xl border border-slate-900/10 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
+            <div className="text-lg font-bold text-slate-900 dark:text-slate-100">{title}</div>
+            {description && (
+                <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">{description}</div>
+            )}
+            <div className="mt-5">{children}</div>
         </div>
     );
 }
 
-function Kpi({ label, value, hint }: { label: string; value: string; hint: string }) {
+function ActionTile({
+    to,
+    title,
+    description,
+}: {
+    to: string;
+    title: string;
+    description: string;
+}) {
     return (
-        <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4 dark:border-white/10 dark:bg-slate-950/30">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {label}
-            </div>
-            <div className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white">{value}</div>
-            <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">{hint}</div>
-        </div>
+        <Link
+            to={to}
+            className="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:bg-slate-100 dark:border-white/10 dark:bg-slate-950/30 dark:hover:bg-slate-950/45"
+        >
+            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</div>
+            <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">{description}</div>
+        </Link>
     );
 }
 
 export function DashboardPage() {
+    const { user, isAdmin } = useAuth();
+
+    const primaryActions = isAdmin
+        ? [
+            {
+                to: "/app/admin/quizzes",
+                title: "Administrare quizuri",
+                description: "Creează, editează și publică quizurile folosite în platformă.",
+            },
+            {
+                to: "/app/live/host",
+                title: "Live Quiz",
+                description: "Pornește o sesiune live pentru quizurile clasice cu clasament în timp real.",
+            },
+            {
+                to: "/app/coding-live/host",
+                title: "Live Coding (Rule Based)",
+                description: "Lansează o sesiune de coding evaluată după ruleset-uri generate sau definite manual.",
+            },
+            {
+                to: "/app/coding-compile-live/host",
+                title: "Live Coding (Compile)",
+                description: "Creează sesiuni compile cu sarcini input/output și reutilizează șabloane salvate.",
+            },
+            {
+                to: "/app/submissions",
+                title: "Istoric teste",
+                description: "Vezi sesiunile trecute, participanții și răspunsurile sau submisile lor.",
+            },
+        ]
+        : [
+            {
+                to: "/app/quizzes",
+                title: "Quizuri",
+                description: "Accesează quizurile publicate și rezolvă testele individuale.",
+            },
+            {
+                to: "/app/live",
+                title: "Intră în Live Quiz",
+                description: "Conectează-te la o sesiune live folosind codul primit de la profesor.",
+            },
+            {
+                to: "/app/coding-live",
+                title: "Live Coding (Rule Based)",
+                description: "Participă la sesiuni de coding evaluate structural pe baza regulilor definite.",
+            },
+            {
+                to: "/app/coding-compile-live",
+                title: "Live Coding (Compile)",
+                description: "Rezolvă sarcini de compilare cu input/output și feedback pe cazuri de test.",
+            },
+            {
+                to: "/app/submissions",
+                title: "Submisii",
+                description: "Revino la încercările tale și verifică rezultatele obținute.",
+            },
+        ];
+
+    const modules = isAdmin
+        ? [
+            "Management quizuri și publicare",
+            "Sesiuni live pentru quizuri clasice",
+            "Sesiuni live pentru coding rule-based",
+            "Sesiuni live pentru coding compile",
+            "Istoric complet de sesiuni și participanți",
+        ]
+        : [
+            "Quizuri individuale cu cronometru",
+            "Participare la sesiuni live pe cod de acces",
+            "Evaluare coding rule-based",
+            "Evaluare coding compile cu feedback pe cazuri",
+            "Istoric pentru răspunsuri și submisii",
+        ];
+
     return (
         <div className="space-y-6">
-            {/* Page title */}
-            <div className="rounded-3xl border border-slate-900/10 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-900/55">
-                <div className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-                    Dashboard
+            <SectionCard
+                title={isAdmin ? "Panou profesor" : "Dashboard student"}
+                description={`Cont activ: ${user?.email ?? "—"}`}
+            >
+                <div className="rounded-2xl bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-700 dark:bg-slate-950/35 dark:text-slate-300">
+                    {isAdmin
+                        ? "Aici ai doar punctele de intrare reale ale aplicației: creare quizuri, pornire sesiuni live și acces la istoric."
+                        : "Dashboardul a fost simplificat să îți arate doar modulele active și acțiunile pe care le poți folosi imediat."}
                 </div>
-                <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                    Imagine de ansamblu asupra activității tale: quizuri, concursuri și progres.
+            </SectionCard>
+
+            <SectionCard
+                title="Acțiuni disponibile"
+                description="Toate cardurile de mai jos duc către fluxuri funcționale, fără date demonstrative sau secțiuni artificiale."
+            >
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                    {primaryActions.map((action) => (
+                        <ActionTile
+                            key={action.to}
+                            to={action.to}
+                            title={action.title}
+                            description={action.description}
+                        />
+                    ))}
                 </div>
-            </div>
+            </SectionCard>
 
-            {/* KPI row */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Kpi label="Quizuri completate" value="12" hint="Ultimele 30 zile" />
-                <Kpi label="Scor mediu" value="78%" hint="Stabil" />
-                <Kpi label="Concursuri active" value="2" hint="Live acum" />
-                <Kpi label="Submisii" value="9" hint="Săptămâna aceasta" />
-            </div>
-
-            {/* Quick actions + activity */}
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <Card title="Acțiuni rapide">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <Link
-                            to="/app/quizzes"
-                            className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4 text-sm font-semibold text-slate-900 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-100 dark:hover:bg-slate-950/40"
+            <SectionCard
+                title="Module active în platformă"
+                description="Lista reflectă capabilitățile disponibile în interfața curentă."
+            >
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    {modules.map((item) => (
+                        <div
+                            key={item}
+                            className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-300"
                         >
-                            Începe un quiz
-                            <div className="mt-1 text-xs font-normal text-slate-600 dark:text-slate-400">
-                                Alege capitolul și timpul.
-                            </div>
-                        </Link>
-
-                        <Link
-                            to="/app/contests"
-                            className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4 text-sm font-semibold text-slate-900 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-100 dark:hover:bg-slate-950/40"
-                        >
-                            Vezi concursuri
-                            <div className="mt-1 text-xs font-normal text-slate-600 dark:text-slate-400">
-                                Intră în competiția live.
-                            </div>
-                        </Link>
-
-                        <Link
-                            to="/app/submissions"
-                            className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4 text-sm font-semibold text-slate-900 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-100 dark:hover:bg-slate-950/40"
-                        >
-                            Istoric submisii
-                            <div className="mt-1 text-xs font-normal text-slate-600 dark:text-slate-400">
-                                Verdict + punctaj.
-                            </div>
-                        </Link>
-
-                        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm font-semibold text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200">
-                            Recomandare
-                            <div className="mt-1 text-xs font-normal text-indigo-800/80 dark:text-indigo-200/80">
-                                Fă un quiz “Networking Basics” azi.
-                            </div>
+                            {item}
                         </div>
-                    </div>
-                </Card>
-
-                <Card title="Activitate recentă">
-                    <div className="overflow-hidden rounded-2xl border border-slate-900/10 dark:border-white/10">
-                        <div className="grid grid-cols-[1fr_auto] gap-3 bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-600 dark:bg-slate-950/30 dark:text-slate-400">
-                            <div>Eveniment</div>
-                            <div>Data</div>
-                        </div>
-                        {[
-                            ["Quiz: Linux basics (84%)", "astăzi"],
-                            ["Submission: A + B (Accepted)", "ieri"],
-                            ["Contest: Algo Sprint – înscris", "acum 2 zile"],
-                            ["Quiz: OOP (72%)", "acum 4 zile"],
-                        ].map(([event, when]) => (
-                            <div
-                                key={event}
-                                className="grid grid-cols-[1fr_auto] gap-3 border-t border-slate-900/10 px-4 py-3 text-sm text-slate-800 dark:border-white/10 dark:text-slate-200"
-                            >
-                                <div className="truncate">{event}</div>
-                                <div className="text-slate-500 dark:text-slate-400">{when}</div>
-                            </div>
-                        ))}
-                    </div>
-                </Card>
-            </div>
+                    ))}
+                </div>
+            </SectionCard>
         </div>
     );
 }

@@ -15,7 +15,6 @@
  *     /app/live/join/:code    → JoinLivePage         ← NOU (cu cod pre-completat)
  *     /app/live/host          → AdminLivePage        ← NOU (admin, fără sesiune)
  *     /app/live/host/:code    → AdminLivePage        ← NOU (admin, sesiune activă)
- *     /app/contests           → ContestsPage
  *     /app/submissions        → SubmissionsPage
  *     /app/admin/quizzes      → AdminQuizzesPage
  *     /app/admin/quizzes/:id  → AdminQuizEditorPage
@@ -36,7 +35,6 @@ import { AdminCodingTaskPage } from "./pages/admin/AdminCodingTaskPage";
 import { QuizzesPage } from "./pages/app/QuizzesPage.tsx";
 import { JoinLivePage } from "./pages/app/JoinLivePage.tsx";
 import { AdminLivePage } from "./pages/admin/AdminLivePage.tsx";
-import { ContestsPage } from "./pages/app/ContestsPage.tsx";
 import { SubmissionsPage } from "./pages/app/SubmissionsPage.tsx";
 import { CodingTaskPage } from "./pages/app/CodingTaskPage.tsx";
 import { AdminLiveCodingPage } from "./pages/admin/AdminLiveCodingPage.tsx";
@@ -98,7 +96,6 @@ export default function App() {
                     </Route>
 
                     {/* Alte pagini */}
-                    <Route path="/app/contests" element={<ContestsPage />} />
                     <Route path="/app/submissions" element={<SubmissionsPage />} />
                     <Route path="/app/submissions/quiz/:code" element={<QuizSubmissionDetailPage />} />
                     <Route path="/app/submissions/coding/:code" element={<CodingSubmissionDetailPage />} />

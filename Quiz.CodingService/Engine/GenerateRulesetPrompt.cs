@@ -11,7 +11,9 @@ ABSOLUTE OUTPUT RULES (must follow):
 - Output MUST start with '{' and end with '}'.
 
 Goal:
-Given professor's reference C# code (intended solution / reference design), generate a RULESET JSON that validates student submissions for structural/design constraints.
+Given professor's reference C# code (intended solution / reference design), generate:
+1. A clear student-facing assignment text explaining what needs to be implemented.
+2. A RULESET JSON that validates student submissions for structural/design constraints.
 Students may use different names, different domains, and different code organization.
 
 Critical requirements:
@@ -25,7 +27,7 @@ Critical requirements:
 - Prefer binding concrete subclasses with bind_concrete_subclass_of instead of referencing an unbound child alias.
 
 Supported rule types (exact strings). Each rule is:
-{ "id":"...", "type":"...", "params":{...} }
+{ "id":"...", "type":"...", "studentMessage":"clear Romanian feedback for the student if this rule fails", "params":{...} }
 
 BINDINGS:
 1) "bind_interface"
@@ -85,18 +87,27 @@ FORBID:
 
 Output schema (must match exactly):
 {
-  "name": "string",
-  "language": "dotnet",
-  "rules": [
-    { "id":"r1", "type":"...", "params": { ... } }
-  ],
-  "notes": "short human explanation (still inside JSON)"
+  "taskTitle": "short assignment title for students",
+  "studentTask": "clear teacher-approved text that students will read before coding",
+  "teacherNotes": "short explanation for the professor about what the ruleset checks",
+  "ruleset": {
+    "name": "string",
+    "language": "dotnet",
+    "rules": [
+      { "id":"r1", "type":"...", "studentMessage":"...", "params": { ... } }
+    ],
+    "notes": "short human explanation of the ruleset"
+  }
 }
 
 Quality guidelines:
 - Keep the rules minimal but sufficient.
 - Ensure the rules reflect the professor reference structure (generalized).
 - Ensure the ruleset is consistent and executable: no missing aliases, correct order of bindings before requirements.
+- The studentTask must describe the implementation goal in plain Romanian and should avoid mentioning internal rule-engine details.
+- The teacherNotes must mention the important structural expectations checked by the ruleset.
+- Every rule must include studentMessage in plain Romanian, short, specific and actionable.
+- studentMessage must explain what is missing or forbidden from the student's perspective, not from the engine's internal alias perspective.
 """;
 
     public static string BuildUserPrompt(string professorCode) => $"""
@@ -105,7 +116,7 @@ Professor reference code:
 {professorCode}
 
 Task:
-Generate a general, name-independent ruleset that captures the structural constraints implied by the reference code.
+Generate a clear student assignment and a general, name-independent ruleset that captures the structural constraints implied by the reference code.
 
 Important:
 - Bind every alias before referencing it later.

@@ -105,9 +105,9 @@ public sealed class CompileCodingTemplateService(MongoContext db)
             winnerTemplate.CreatedAt = group.Min(item => item.Canonical.CreatedAt);
             winnerTemplate.UpdatedAt = group.Max(item => item.Canonical.UpdatedAt);
 
-            await db.CompileTemplateDocuments.ReplaceOneAsync(
-                Builders<BsonDocument>.Filter.Eq("_id", winner.Raw["_id"]),
-                winnerTemplate.ToBsonDocument(),
+            await db.CompileTemplates.ReplaceOneAsync(
+                x => x.Id == winnerTemplate.Id,
+                winnerTemplate,
                 cancellationToken: ct);
 
             foreach (var duplicate in group.Where(item => !item.Raw["_id"].Equals(winner.Raw["_id"])))
@@ -421,7 +421,7 @@ console.log(a + b);
 
         if (matchingSnapshots.Count == 0)
         {
-            await db.CompileTemplateDocuments.InsertOneAsync(normalized.ToBsonDocument(), cancellationToken: ct);
+            await db.CompileTemplates.InsertOneAsync(normalized, cancellationToken: ct);
             return normalized;
         }
 
@@ -435,9 +435,9 @@ console.log(a + b);
         merged.CreatedAt = matchingSnapshots.Min(item => item.Template.CreatedAt);
         merged.UpdatedAt = DateTimeOffset.UtcNow;
 
-        await db.CompileTemplateDocuments.ReplaceOneAsync(
-            Builders<BsonDocument>.Filter.Eq("_id", winner.Id),
-            merged.ToBsonDocument(),
+        await db.CompileTemplates.ReplaceOneAsync(
+            x => x.Id == merged.Id,
+            merged,
             cancellationToken: ct);
 
         foreach (var duplicate in matchingSnapshots.Where(item => item.Id != winner.Id))

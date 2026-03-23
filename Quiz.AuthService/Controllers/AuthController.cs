@@ -68,7 +68,7 @@ public sealed class AuthController(
     [HttpPost("run-seed")]
     public async Task<IActionResult> RunSeed()
     {
-        var roles = new[] { "Admin", "Teacher", "Student" };
+        var roles = new[] { "Teacher", "Student" };
         foreach (var role in roles)
         {
             if (!await roleManager.RoleExistsAsync(role))
@@ -79,7 +79,6 @@ public sealed class AuthController(
 
         var demoUsers = new[]
         {
-            new { Email = "admin@exemplu.md", Role = "Admin" },
             new { Email = "teacher@exemplu.md", Role = "Teacher" },
             new { Email = "student@exemplu.md", Role = "Student" }
         };

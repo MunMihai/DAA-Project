@@ -7,7 +7,7 @@ namespace Quiz.CodingService.State;
 /// <summary>
 /// Redis state store for Live Coding Sessions.
 /// Keys:
-///   lc:session:{code} -> Hash { status, hostId, RulesetJson }
+    ///   lc:session:{code} -> Hash { status, hostId, RulesetJson, taskTitle, taskDescription }
 ///   lc:players:{code} -> Hash { playerId -> displayName }
 ///   lc:scores:{code}  -> Hash { playerId -> int }
 /// </summary>
@@ -25,7 +25,7 @@ public sealed class LiveCodingSessionStateStore(IConnectionMultiplexer mux)
     public Task<bool> SessionExists(string code) =>
         Db.KeyExistsAsync(SK(code));
 
-    public async Task CreateSession(string code, Ruleset ruleset, int timeLimitSeconds)
+    public async Task CreateSession(string code, Ruleset ruleset, int timeLimitSeconds, string taskTitle, string taskDescription)
     {
         var rulesetJson = JsonSerializer.Serialize(ruleset, JsonOpt);
 
@@ -35,7 +35,9 @@ public sealed class LiveCodingSessionStateStore(IConnectionMultiplexer mux)
             new HashEntry("hostId", "__pending__"),
             new HashEntry("createdAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
             new HashEntry("ruleset", rulesetJson),
-            new HashEntry("timeLimitSeconds", timeLimitSeconds)
+            new HashEntry("timeLimitSeconds", timeLimitSeconds),
+            new HashEntry("taskTitle", taskTitle),
+            new HashEntry("taskDescription", taskDescription)
         });
         await RefreshTtl(code);
     }
@@ -79,6 +81,18 @@ public sealed class LiveCodingSessionStateStore(IConnectionMultiplexer mux)
     {
         var rv = await Db.HashGetAsync(SK(code), "timeLimitSeconds");
         return int.TryParse(rv.ToString(), out var seconds) ? seconds : 600;
+    }
+
+    public async Task<string?> GetTaskTitle(string code)
+    {
+        var rv = await Db.HashGetAsync(SK(code), "taskTitle");
+        return rv.IsNullOrEmpty ? null : rv.ToString();
+    }
+
+    public async Task<string?> GetTaskDescription(string code)
+    {
+        var rv = await Db.HashGetAsync(SK(code), "taskDescription");
+        return rv.IsNullOrEmpty ? null : rv.ToString();
     }
 
     public async Task<DateTimeOffset?> GetDeadlineUtc(string code)

@@ -8,10 +8,19 @@ public sealed class Ruleset
     public List<RuleDef> rules { get; set; } = new();
 }
 
+public sealed class RuleBasedTaskDraft
+{
+    public string taskTitle { get; set; } = "";
+    public string studentTask { get; set; } = "";
+    public string? teacherNotes { get; set; }
+    public Ruleset ruleset { get; set; } = new();
+}
+
 public sealed class RuleDef
 {
     public string id { get; set; } = "";
     public string type { get; set; } = "";
+    public string? studentMessage { get; set; }
     public Dictionary<string, object> @params { get; set; } = new();
 }
 

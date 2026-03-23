@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useApi } from "../../api/axios";
-import type { CodingRuleset } from "../../api/codingApi";
+import type { CodingRuleset, RuleBasedTaskDraft } from "../../api/codingApi";
 import { codingApi } from "../../api/codingApi";
 
 export function AdminCodingTaskPage() {
@@ -8,6 +8,7 @@ export function AdminCodingTaskPage() {
     const coding = codingApi(api);
 
     const [referenceCode, setReferenceCode] = useState("");
+    const [draft, setDraft] = useState<RuleBasedTaskDraft | null>(null);
     const [ruleset, setRuleset] = useState<CodingRuleset | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -18,7 +19,8 @@ export function AdminCodingTaskPage() {
         setError("");
         try {
             const result = await coding.generateRuleset(referenceCode);
-            setRuleset(result);
+            setDraft(result);
+            setRuleset(result.ruleset);
         } catch (err: any) {
             setError(err.response?.data || err.message || "Failed to generate ruleset.");
         } finally {
@@ -50,8 +52,16 @@ export function AdminCodingTaskPage() {
                 <p className="text-red-600 mt-4">{error}</p>
             )}
 
-            {ruleset && (
+            {draft && ruleset && (
                 <div className="p-4 mt-6 bg-gray-100 rounded-lg">
+                    <h2 className="text-lg font-semibold mb-2">2. AI draft pentru student:</h2>
+                    <div className="mb-4 rounded border bg-white p-3">
+                        <div className="font-semibold">{draft.taskTitle}</div>
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{draft.studentTask}</p>
+                    </div>
+                    {draft.teacherNotes && (
+                        <p className="mb-4 text-sm text-gray-600">{draft.teacherNotes}</p>
+                    )}
                     <h2 className="text-lg font-semibold mb-2">2. Generated Ruleset (JSON):</h2>
                     <pre className="whitespace-pre-wrap font-mono text-sm bg-white p-3 rounded border">
                         {JSON.stringify(ruleset, null, 2)}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../../api/axios";
-import { codingApi, type CodingRuleset } from "../../api/codingApi";
+import { codingApi, type CodingRuleset, type CreateLiveCodingSessionRequest, type RuleBasedTaskDraft } from "../../api/codingApi";
 import { useLiveCodingSession, type LeaderboardEntry } from "../../hooks/useLiveCodingSession";
 import { toastApiError } from "../../utils/toastError";
 
@@ -96,7 +96,12 @@ function CreateSessionStep({ onCreate }: { onCreate: (code: string) => void }) {
     const api = useApi();
     const coding = codingApi(api);
     const [referenceCode, setReferenceCode] = useState("");
+    const [draft, setDraft] = useState<RuleBasedTaskDraft | null>(null);
     const [ruleset, setRuleset] = useState<CodingRuleset | null>(null);
+    const [taskTitle, setTaskTitle] = useState("");
+    const [taskDescription, setTaskDescription] = useState("");
+    const [teacherNotes, setTeacherNotes] = useState("");
+    const [rulesetEditor, setRulesetEditor] = useState("");
     const [timeLimit, setTimeLimit] = useState(10);
     const [loading, setLoading] = useState(false);
     const [creating, setCreating] = useState(false);
@@ -108,7 +113,12 @@ function CreateSessionStep({ onCreate }: { onCreate: (code: string) => void }) {
         setError("");
         try {
             const result = await coding.generateRuleset(referenceCode);
-            setRuleset(result);
+            setDraft(result);
+            setRuleset(result.ruleset);
+            setTaskTitle(result.taskTitle);
+            setTaskDescription(result.studentTask);
+            setTeacherNotes(result.teacherNotes ?? "");
+            setRulesetEditor(JSON.stringify(result.ruleset, null, 2));
         } catch (err: any) {
             setError(err.response?.data?.message || err.message || "Eroare la generare");
             toastApiError(err, "Nu pot genera ruleset-ul.");
@@ -119,10 +129,46 @@ function CreateSessionStep({ onCreate }: { onCreate: (code: string) => void }) {
 
     const handleCreate = async () => {
         if (!ruleset) return;
+
+        let parsedRuleset: CodingRuleset;
+        try {
+            parsedRuleset = JSON.parse(rulesetEditor) as CodingRuleset;
+        } catch {
+            setError("Ruleset-ul editat nu este JSON valid.");
+            return;
+        }
+
+        if (!taskTitle.trim()) {
+            setError("Titlul sarcinii este obligatoriu.");
+            return;
+        }
+
+        if (!taskDescription.trim()) {
+            setError("Descrierea sarcinii pentru student este obligatorie.");
+            return;
+        }
+
+        if (!referenceCode.trim()) {
+            setError("Codul de referință este obligatoriu pentru validarea sesiunii.");
+            return;
+        }
+
+        if (!parsedRuleset?.name?.trim() || !parsedRuleset?.language?.trim() || !Array.isArray(parsedRuleset.rules) || parsedRuleset.rules.length === 0) {
+            setError("Ruleset-ul trebuie să conțină nume, limbaj și cel puțin o regulă.");
+            return;
+        }
+
         setCreating(true);
         setError("");
         try {
-            const res = await coding.createSession(ruleset, timeLimit * 60);
+            const request: CreateLiveCodingSessionRequest = {
+                referenceCode: referenceCode.trim(),
+                taskTitle: taskTitle.trim(),
+                taskDescription: taskDescription.trim(),
+                ruleset: parsedRuleset,
+                timeLimitSeconds: timeLimit * 60,
+            };
+            const res = await coding.createSession(request);
             onCreate(res.sessionCode);
         } catch (err: any) {
             setError(err.response?.data?.message || err.message || "Eroare la creare");
@@ -139,7 +185,7 @@ function CreateSessionStep({ onCreate }: { onCreate: (code: string) => void }) {
                     Lansează Live Coding (Rule Based)
                 </div>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                    Inserează codul sursă de referință. Va fi generat un ruleset pentru autoevaluare.
+                    Inserează codul sursă de referință. Agentul AI va genera regulile și va formula sarcina pentru student, iar tu le poți edita înainte de publicare.
                 </p>
 
                 <textarea
@@ -179,9 +225,49 @@ function CreateSessionStep({ onCreate }: { onCreate: (code: string) => void }) {
 
                 {error && <p className="text-red-500 mt-4 text-sm font-semibold">{error}</p>}
 
-                {ruleset && (
-                    <div className="mt-6 p-4 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-mono overflow-auto max-h-64 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200">
-                        {JSON.stringify(ruleset, null, 2)}
+                {draft && ruleset && (
+                    <div className="mt-6 space-y-5">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-slate-950/30">
+                            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Draft AI pentru profesor</div>
+                            {teacherNotes && (
+                                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{teacherNotes}</p>
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                Titlul sarcinii pentru student
+                            </label>
+                            <input
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
+                                value={taskTitle}
+                                onChange={(e) => setTaskTitle(e.target.value)}
+                                placeholder="Ex: Implementează o ierarhie cu interfață și override"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                Sarcina afișată studentului
+                            </label>
+                            <textarea
+                                className="h-40 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
+                                value={taskDescription}
+                                onChange={(e) => setTaskDescription(e.target.value)}
+                                placeholder="Descrie clar ce cod trebuie implementat, ce structuri sunt așteptate și ce comportament urmărește profesorul."
+                            />
+                        </div>
+
+                        <div>
+                            <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                Ruleset editabil (JSON)
+                            </label>
+                            <textarea
+                                className="h-72 w-full rounded-xl border border-slate-200 bg-slate-50 p-4 font-mono text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
+                                value={rulesetEditor}
+                                onChange={(e) => setRulesetEditor(e.target.value)}
+                            />
+                        </div>
                     </div>
                 )}
             </div>

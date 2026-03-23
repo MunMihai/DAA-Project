@@ -240,6 +240,13 @@ public sealed class LiveSessionStateStore(IConnectionMultiplexer mux)
         return snap.Questions[index];
     }
 
+    public async Task<QuestionCorrectSnapshot?> GetCorrectQuestion(string code, int index)
+    {
+        var snap = await GetCorrectSnapshot(code);
+        if (snap is null || index < 0 || index >= snap.Questions.Count) return null;
+        return snap.Questions[index];
+    }
+
     public async Task<QuizPublicSnapshot?> GetPublicSnapshot(string code)
     {
         var rv = await Db.StringGetAsync(SnapK(code));

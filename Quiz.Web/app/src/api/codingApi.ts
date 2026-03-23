@@ -7,6 +7,13 @@ export type CodingRuleset = {
     rules: any[];
 };
 
+export type RuleBasedTaskDraft = {
+    taskTitle: string;
+    studentTask: string;
+    teacherNotes?: string;
+    ruleset: CodingRuleset;
+};
+
 export type ValidationViolation = {
     ruleId: string;
     message: string;
@@ -69,14 +76,22 @@ export type LiveCodingHistoryDetail = {
     participants: LiveCodingParticipantHistory[];
 };
 
+export type CreateLiveCodingSessionRequest = {
+    referenceCode: string;
+    taskTitle: string;
+    taskDescription: string;
+    ruleset: CodingRuleset;
+    timeLimitSeconds: number;
+};
+
 export function codingApi(api: AxiosInstance) {
     return {
         generateRuleset: async (referenceCode: string) => {
-            const { data } = await api.post<CodingRuleset>("/coding-quiz/generate-ruleset", { referenceCode });
+            const { data } = await api.post<RuleBasedTaskDraft>("/coding-quiz/generate-ruleset", { referenceCode });
             return data;
         },
-        createSession: async (ruleset: CodingRuleset, timeLimitSeconds: number) => {
-            const { data } = await api.post<{ sessionCode: string }>("/coding-sessions", { ruleset, timeLimitSeconds });
+        createSession: async (request: CreateLiveCodingSessionRequest) => {
+            const { data } = await api.post<{ sessionCode: string }>("/coding-sessions", request);
             return data;
         },
         evaluate: async (studentCode: string, ruleset: CodingRuleset) => {

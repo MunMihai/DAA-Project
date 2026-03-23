@@ -72,13 +72,13 @@ public sealed class RoslynRuleEngine
                         break;
 
                     default:
-                        violations.Add(new(rule.id, $"Unsupported rule type '{rule.type}'."));
+                        violations.Add(CreateViolation(rule, $"Unsupported rule type '{rule.type}'."));
                         break;
                 }
             }
             catch (Exception ex)
             {
-                violations.Add(new(rule.id, $"Rule execution error: {ex.Message}"));
+                violations.Add(CreateViolation(rule, $"Rule execution error: {ex.Message}"));
             }
         }
 
@@ -100,6 +100,38 @@ public sealed class RoslynRuleEngine
         var s = P(rule, key);
         return int.TryParse(s, out var x) ? x : def;
     }
+
+    private static Violation CreateViolation(RuleDef rule, string technicalMessage, string? fallbackStudentMessage = null)
+    {
+        var explicitStudentMessage = (rule.studentMessage ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(explicitStudentMessage))
+            return new Violation(rule.id, explicitStudentMessage);
+
+        var studentMessage = !string.IsNullOrWhiteSpace(fallbackStudentMessage)
+            ? fallbackStudentMessage.Trim()
+            : GetGenericStudentMessage(rule.type);
+
+        if (string.Equals(studentMessage, technicalMessage, StringComparison.Ordinal))
+            return new Violation(rule.id, studentMessage);
+
+        return new Violation(rule.id, $"{studentMessage} Detaliu: {technicalMessage}");
+    }
+
+    private static string GetGenericStudentMessage(string ruleType) => ruleType switch
+    {
+        "bind_interface" => "Lipsește interfața cerută de sarcină sau nu este folosită corect.",
+        "bind_abstract_class" => "Lipsește clasa abstractă cerută de sarcină.",
+        "bind_concrete_class_implementing" => "Lipsește o clasă concretă care implementează interfața cerută.",
+        "bind_concrete_subclass_of" => "Lipsește o clasă concretă care extinde baza cerută.",
+        "bind_method_on_type" => "Lipsește metoda cerută pe tipul potrivit.",
+        "require_inheritance" => "Relația de moștenire cerută de sarcină nu este respectată.",
+        "require_implements" => "Tipul cerut nu implementează interfața așteptată.",
+        "require_method_override" => "Metoda cerută nu este suprascrisă corect.",
+        "require_call" => "Lipsește apelul obligatoriu dintre componentele cerute.",
+        "forbid_api" => "Codul folosește un API interzis pentru această sarcină.",
+        "forbid_object_creation" => "Codul creează direct un obiect care nu trebuie instanțiat aici.",
+        _ => "Soluția nu respectă una dintre regulile cerute de sarcină."
+    };
 
     private bool TryGetType(string alias, out INamedTypeSymbol type) => _typeAliases.TryGetValue(alias, out type!);
     private bool TryGetMethod(string alias, out IMethodSymbol method) => _methodAliases.TryGetValue(alias, out method!);
@@ -145,7 +177,7 @@ public sealed class RoslynRuleEngine
         var alias = P(rule, "alias");
         if (string.IsNullOrWhiteSpace(alias))
         {
-            violations.Add(new(rule.id, "Missing params.alias"));
+            violations.Add(CreateViolation(rule, "Missing params.alias", "Lipsește definiția structurii cerute de această regulă."));
             return;
         }
 
@@ -159,7 +191,7 @@ public sealed class RoslynRuleEngine
 
         if (candidates.Count == 0)
         {
-            violations.Add(new(rule.id, $"No interface found meeting minImplementations={minImpl}."));
+            violations.Add(CreateViolation(rule, $"No interface found meeting minImplementations={minImpl}.", "Lipsește interfața cerută de sarcină sau ea nu este implementată suficient."));
             return;
         }
 
@@ -171,13 +203,13 @@ public sealed class RoslynRuleEngine
         var alias = P(rule, "alias");
         if (string.IsNullOrWhiteSpace(alias))
         {
-            violations.Add(new(rule.id, "Missing params.alias"));
+            violations.Add(CreateViolation(rule, "Missing params.alias", "Lipsește definiția clasei abstracte cerute."));
             return;
         }
 
         if (index.AbstractClasses.Count == 0)
         {
-            violations.Add(new(rule.id, "No abstract class found in submission."));
+            violations.Add(CreateViolation(rule, "No abstract class found in submission.", "Soluția trebuie să conțină o clasă abstractă, dar aceasta lipsește."));
             return;
         }
 
@@ -196,13 +228,13 @@ public sealed class RoslynRuleEngine
 
         if (string.IsNullOrWhiteSpace(alias) || string.IsNullOrWhiteSpace(implementsAlias))
         {
-            violations.Add(new(rule.id, "Missing params.alias or params.implementsAlias"));
+            violations.Add(CreateViolation(rule, "Missing params.alias or params.implementsAlias", "Regula pentru implementarea unei interfețe nu este configurată complet."));
             return;
         }
 
         if (!TryGetType(implementsAlias, out var iface))
         {
-            violations.Add(new(rule.id, $"Type alias '{implementsAlias}' not bound."));
+            violations.Add(CreateViolation(rule, $"Type alias '{implementsAlias}' not bound.", "Nu am putut identifica interfața pe care soluția trebuia să o implementeze."));
             return;
         }
 
@@ -212,7 +244,7 @@ public sealed class RoslynRuleEngine
 
         if (candidates.Count == 0)
         {
-            violations.Add(new(rule.id, $"No concrete class implements '{iface.Name}' (alias {implementsAlias})."));
+            violations.Add(CreateViolation(rule, $"No concrete class implements '{iface.Name}' (alias {implementsAlias}).", "Lipsește o clasă concretă care să implementeze interfața cerută."));
             return;
         }
 
@@ -231,20 +263,20 @@ public sealed class RoslynRuleEngine
 
         if (string.IsNullOrWhiteSpace(alias) || string.IsNullOrWhiteSpace(baseAlias))
         {
-            violations.Add(new(rule.id, "Missing params.alias or params.baseAlias"));
+            violations.Add(CreateViolation(rule, "Missing params.alias or params.baseAlias", "Regula pentru moștenire nu este configurată complet."));
             return;
         }
 
         if (!TryGetType(baseAlias, out var baseType))
         {
-            violations.Add(new(rule.id, $"Type alias '{baseAlias}' not bound."));
+            violations.Add(CreateViolation(rule, $"Type alias '{baseAlias}' not bound.", "Nu am putut identifica tipul de bază pe care soluția trebuia să îl extindă."));
             return;
         }
 
         var subs = index.ConcreteClasses.Where(c => InheritsFrom(c, baseType)).ToList();
         if (subs.Count < minCount)
         {
-            violations.Add(new(rule.id, $"Expected at least {minCount} concrete subclass(es) of '{baseType.Name}'. Found: {subs.Count}."));
+            violations.Add(CreateViolation(rule, $"Expected at least {minCount} concrete subclass(es) of '{baseType.Name}'. Found: {subs.Count}.", "Lipsește cel puțin o clasă concretă care să extindă baza cerută."));
             return;
         }
 
@@ -258,13 +290,13 @@ public sealed class RoslynRuleEngine
 
         if (string.IsNullOrWhiteSpace(alias) || string.IsNullOrWhiteSpace(onTypeAlias))
         {
-            violations.Add(new(rule.id, "Missing params.alias or params.onTypeAlias"));
+            violations.Add(CreateViolation(rule, "Missing params.alias or params.onTypeAlias", "Regula pentru metoda cerută nu este configurată complet."));
             return;
         }
 
         if (!TryGetType(onTypeAlias, out var type))
         {
-            violations.Add(new(rule.id, $"Type alias '{onTypeAlias}' not bound."));
+            violations.Add(CreateViolation(rule, $"Type alias '{onTypeAlias}' not bound.", "Nu am putut identifica tipul pe care ar trebui să existe metoda cerută."));
             return;
         }
 
@@ -278,7 +310,7 @@ public sealed class RoslynRuleEngine
         {
             if (!TryGetType(returnsAlias, out var rt))
             {
-                violations.Add(new(rule.id, $"Return type alias '{returnsAlias}' not bound."));
+                violations.Add(CreateViolation(rule, $"Return type alias '{returnsAlias}' not bound.", "Regula pentru tipul de retur al metodei nu a putut fi verificată."));
                 return;
             }
             returnsType = rt;
@@ -304,7 +336,7 @@ public sealed class RoslynRuleEngine
 
         if (methods.Count == 0)
         {
-            violations.Add(new(rule.id, $"No method found on '{type.Name}' matching constraints."));
+            violations.Add(CreateViolation(rule, $"No method found on '{type.Name}' matching constraints.", "Lipsește metoda cerută de sarcină pe tipul potrivit."));
             return;
         }
 
@@ -322,24 +354,24 @@ public sealed class RoslynRuleEngine
 
         if (string.IsNullOrWhiteSpace(childAlias) || string.IsNullOrWhiteSpace(baseAlias))
         {
-            violations.Add(new(rule.id, "Missing params.childAlias or params.baseAlias"));
+            violations.Add(CreateViolation(rule, "Missing params.childAlias or params.baseAlias", "Regula pentru relația de moștenire nu este configurată complet."));
             return;
         }
 
         if (!TryGetType(childAlias, out var child))
         {
-            violations.Add(new(rule.id, $"Type alias '{childAlias}' not bound. (Ruleset incomplete or wrong bind order)"));
+            violations.Add(CreateViolation(rule, $"Type alias '{childAlias}' not bound. (Ruleset incomplete or wrong bind order)", "Nu am putut identifica tipul care trebuia să moștenească baza cerută."));
             return;
         }
 
         if (!TryGetType(baseAlias, out var baseType))
         {
-            violations.Add(new(rule.id, $"Type alias '{baseAlias}' not bound. (Ruleset incomplete or wrong bind order)"));
+            violations.Add(CreateViolation(rule, $"Type alias '{baseAlias}' not bound. (Ruleset incomplete or wrong bind order)", "Nu am putut identifica tipul de bază cerut de sarcină."));
             return;
         }
 
         if (!InheritsFrom(child, baseType))
-            violations.Add(new(rule.id, $"Type '{child.Name}' does not inherit from '{baseType.Name}'."));
+            violations.Add(CreateViolation(rule, $"Type '{child.Name}' does not inherit from '{baseType.Name}'.", "Tipul cerut nu moștenește clasa de bază așteptată."));
     }
 
     private void RequireImplements(RuleDef rule, List<Violation> violations)
@@ -349,24 +381,24 @@ public sealed class RoslynRuleEngine
 
         if (string.IsNullOrWhiteSpace(typeAlias) || string.IsNullOrWhiteSpace(ifaceAlias))
         {
-            violations.Add(new(rule.id, "Missing params.typeAlias or params.interfaceAlias"));
+            violations.Add(CreateViolation(rule, "Missing params.typeAlias or params.interfaceAlias", "Regula pentru implementarea interfeței nu este configurată complet."));
             return;
         }
 
         if (!TryGetType(typeAlias, out var t))
         {
-            violations.Add(new(rule.id, $"Type alias '{typeAlias}' not bound."));
+            violations.Add(CreateViolation(rule, $"Type alias '{typeAlias}' not bound.", "Nu am putut identifica tipul care trebuie să implementeze interfața cerută."));
             return;
         }
 
         if (!TryGetType(ifaceAlias, out var iface))
         {
-            violations.Add(new(rule.id, $"Type alias '{ifaceAlias}' not bound."));
+            violations.Add(CreateViolation(rule, $"Type alias '{ifaceAlias}' not bound.", "Nu am putut identifica interfața cerută de sarcină."));
             return;
         }
 
         if (!t.AllInterfaces.Any(i => SymbolEqualityComparer.Default.Equals(i, iface)))
-            violations.Add(new(rule.id, $"Type '{t.Name}' does not implement '{iface.Name}'."));
+            violations.Add(CreateViolation(rule, $"Type '{t.Name}' does not implement '{iface.Name}'.", "Tipul cerut nu implementează interfața așteptată."));
     }
 
     private void RequireMethodOverride(RuleDef rule, List<Violation> violations)
@@ -376,19 +408,19 @@ public sealed class RoslynRuleEngine
 
         if (string.IsNullOrWhiteSpace(typeAlias) || string.IsNullOrWhiteSpace(overridesMethodAlias))
         {
-            violations.Add(new(rule.id, "Missing params.typeAlias or params.overridesMethodAlias"));
+            violations.Add(CreateViolation(rule, "Missing params.typeAlias or params.overridesMethodAlias", "Regula pentru override nu este configurată complet."));
             return;
         }
 
         if (!TryGetType(typeAlias, out var t))
         {
-            violations.Add(new(rule.id, $"Type alias '{typeAlias}' not bound."));
+            violations.Add(CreateViolation(rule, $"Type alias '{typeAlias}' not bound.", "Nu am putut identifica tipul care trebuia să suprascrie metoda cerută."));
             return;
         }
 
         if (!TryGetMethod(overridesMethodAlias, out var m))
         {
-            violations.Add(new(rule.id, $"Method alias '{overridesMethodAlias}' not bound."));
+            violations.Add(CreateViolation(rule, $"Method alias '{overridesMethodAlias}' not bound.", "Nu am putut identifica metoda care trebuia să fie suprascrisă."));
             return;
         }
 
@@ -397,7 +429,7 @@ public sealed class RoslynRuleEngine
             SymbolEqualityComparer.Default.Equals(mm.OverriddenMethod, m));
 
         if (!ok)
-            violations.Add(new(rule.id, $"Type '{t.Name}' does not override method '{m.Name}'."));
+            violations.Add(CreateViolation(rule, $"Type '{t.Name}' does not override method '{m.Name}'.", "Metoda cerută nu este suprascrisă corect."));
     }
 
     private void RequireCall(RuleDef rule, SyntaxNode root, SemanticModel model, List<Violation> violations)
@@ -408,19 +440,19 @@ public sealed class RoslynRuleEngine
 
         if (string.IsNullOrWhiteSpace(callerTypeAlias) || string.IsNullOrWhiteSpace(calleeMethodAlias))
         {
-            violations.Add(new(rule.id, "Missing params.callerTypeAlias or params.calleeMethodAlias"));
+            violations.Add(CreateViolation(rule, "Missing params.callerTypeAlias or params.calleeMethodAlias", "Regula pentru apelul obligatoriu nu este configurată complet."));
             return;
         }
 
         if (!TryGetType(callerTypeAlias, out var callerType))
         {
-            violations.Add(new(rule.id, $"Type alias '{callerTypeAlias}' not bound."));
+            violations.Add(CreateViolation(rule, $"Type alias '{callerTypeAlias}' not bound.", "Nu am putut identifica tipul din care trebuie făcut apelul cerut."));
             return;
         }
 
         if (!TryGetMethod(calleeMethodAlias, out var callee))
         {
-            violations.Add(new(rule.id, $"Method alias '{calleeMethodAlias}' not bound."));
+            violations.Add(CreateViolation(rule, $"Method alias '{calleeMethodAlias}' not bound.", "Nu am putut identifica metoda care trebuie apelată."));
             return;
         }
 
@@ -437,7 +469,7 @@ public sealed class RoslynRuleEngine
 
         if (callerDecl is null)
         {
-            violations.Add(new(rule.id, $"Caller type '{callerType.Name}' not found in syntax tree."));
+            violations.Add(CreateViolation(rule, $"Caller type '{callerType.Name}' not found in syntax tree.", "Lipsește tipul din care ar trebui să fie făcut apelul obligatoriu."));
             return;
         }
 
@@ -467,7 +499,7 @@ public sealed class RoslynRuleEngine
         }
 
         if (!found)
-            violations.Add(new(rule.id, $"Expected '{callerType.Name}' to call '{callee.Name}' (alias {calleeMethodAlias})."));
+            violations.Add(CreateViolation(rule, $"Expected '{callerType.Name}' to call '{callee.Name}' (alias {calleeMethodAlias}).", "Lipsește apelul obligatoriu dintre metodele sau componentele cerute."));
     }
 
     // -------------------------
@@ -478,14 +510,14 @@ public sealed class RoslynRuleEngine
     {
         if (!rule.@params.TryGetValue("contains", out var v) || v is null)
         {
-            violations.Add(new(rule.id, "Missing params.contains array."));
+            violations.Add(CreateViolation(rule, "Missing params.contains array.", "Regula pentru API-urile interzise nu este configurată complet."));
             return;
         }
 
         var list = ToStringList(v);
         if (list.Count == 0)
         {
-            violations.Add(new(rule.id, "params.contains is empty."));
+            violations.Add(CreateViolation(rule, "params.contains is empty.", "Lista de API-uri interzise nu este configurată corect."));
             return;
         }
 
@@ -495,7 +527,7 @@ public sealed class RoslynRuleEngine
             if (string.IsNullOrWhiteSpace(token)) continue;
             if (src.Contains(token, StringComparison.Ordinal))
             {
-                violations.Add(new(rule.id, $"Forbidden API usage detected: '{token}'."));
+                violations.Add(CreateViolation(rule, $"Forbidden API usage detected: '{token}'.", "Codul folosește un API interzis pentru această sarcină."));
             }
         }
     }
@@ -507,19 +539,19 @@ public sealed class RoslynRuleEngine
 
         if (string.IsNullOrWhiteSpace(inTypeAlias) || string.IsNullOrWhiteSpace(forbiddenTypeAlias))
         {
-            violations.Add(new(rule.id, "Missing params.inTypeAlias or params.forbiddenTypeAlias"));
+            violations.Add(CreateViolation(rule, "Missing params.inTypeAlias or params.forbiddenTypeAlias", "Regula pentru instanțiere interzisă nu este configurată complet."));
             return;
         }
 
         if (!TryGetType(inTypeAlias, out var inType))
         {
-            violations.Add(new(rule.id, $"Type alias '{inTypeAlias}' not bound."));
+            violations.Add(CreateViolation(rule, $"Type alias '{inTypeAlias}' not bound.", "Nu am putut identifica tipul în care instanțierea ar trebui interzisă."));
             return;
         }
 
         if (!TryGetType(forbiddenTypeAlias, out var forbiddenType))
         {
-            violations.Add(new(rule.id, $"Type alias '{forbiddenTypeAlias}' not bound."));
+            violations.Add(CreateViolation(rule, $"Type alias '{forbiddenTypeAlias}' not bound.", "Nu am putut identifica tipul care nu trebuie instanțiat direct."));
             return;
         }
 
@@ -532,7 +564,7 @@ public sealed class RoslynRuleEngine
 
         if (classDecl is null)
         {
-            violations.Add(new(rule.id, $"Type '{inType.Name}' not found in syntax tree."));
+            violations.Add(CreateViolation(rule, $"Type '{inType.Name}' not found in syntax tree.", "Lipsește tipul în care ar trebui evitată instanțierea directă."));
             return;
         }
 
@@ -558,6 +590,6 @@ public sealed class RoslynRuleEngine
         }
 
         if (found)
-            violations.Add(new(rule.id, $"Forbidden object creation inside '{inType.Name}' for '{forbiddenType.Name}'."));
+            violations.Add(CreateViolation(rule, $"Forbidden object creation inside '{inType.Name}' for '{forbiddenType.Name}'.", "Codul instanțiază direct un tip care ar trebui evitat în această zonă."));
     }
 }

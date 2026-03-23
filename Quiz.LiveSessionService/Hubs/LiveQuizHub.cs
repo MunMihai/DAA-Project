@@ -303,6 +303,8 @@ public sealed class LiveQuizHub(
         if (question is null)
             throw new HubException("Întrebarea nu mai este disponibilă.");
 
+        var correctQuestion = await store.GetCorrectQuestion(sessionCode, questionIndex);
+
         var payloadError = ValidateAnswerPayload(question, payload);
         if (payloadError is not null)
             throw new HubException(payloadError);
@@ -338,6 +340,7 @@ public sealed class LiveQuizHub(
                 displayName,
                 questionIndex,
                 question,
+                correctQuestion,
                 payload,
                 result,
                 currentScore);

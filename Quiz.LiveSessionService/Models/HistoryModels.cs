@@ -49,6 +49,7 @@ public sealed class LiveQuizAnswerHistory
     public int QuestionType { get; set; }
     public string Prompt { get; set; } = "";
     public string SubmittedAnswer { get; set; } = "";
+    public string OfficialAnswer { get; set; } = "";
     public bool IsCorrect { get; set; }
     public int PointsEarned { get; set; }
     public DateTimeOffset SubmittedAt { get; set; } = DateTimeOffset.UtcNow;

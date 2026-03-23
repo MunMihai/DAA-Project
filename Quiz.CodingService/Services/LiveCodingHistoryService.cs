@@ -7,7 +7,12 @@ namespace Quiz.CodingService.Services;
 
 public sealed class LiveCodingHistoryService(MongoContext db)
 {
-    public async Task RecordSessionCreatedAsync(string sessionCode, Ruleset ruleset, int timeLimitSeconds, CancellationToken ct = default)
+    public async Task RecordSessionCreatedAsync(
+        string sessionCode,
+        string taskTitle,
+        Ruleset ruleset,
+        int timeLimitSeconds,
+        CancellationToken ct = default)
     {
         var existing = await db.Sessions.Find(x => x.SessionCode == sessionCode).FirstOrDefaultAsync(ct);
         if (existing is not null)
@@ -16,7 +21,9 @@ public sealed class LiveCodingHistoryService(MongoContext db)
         await db.Sessions.InsertOneAsync(new LiveCodingSessionHistory
         {
             SessionCode = sessionCode,
-            TaskName = string.IsNullOrWhiteSpace(ruleset.name) ? "Live Coding Task" : ruleset.name,
+            TaskName = string.IsNullOrWhiteSpace(taskTitle)
+                ? (string.IsNullOrWhiteSpace(ruleset.name) ? "Live Coding Task" : ruleset.name)
+                : taskTitle,
             Language = ruleset.language,
             TimeLimitSeconds = timeLimitSeconds,
             RuleCount = ruleset.rules?.Count ?? 0,

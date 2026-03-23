@@ -91,10 +91,14 @@ public sealed class LiveCodingHub(
         if (status == "running")
         {
             var deadline = await store.GetDeadlineUtc(sessionCode);
+            var taskTitle = await store.GetTaskTitle(sessionCode);
+            var taskDescription = await store.GetTaskDescription(sessionCode);
             await Clients.Caller.SendAsync("sessionStarted", new
             {
                 sessionCode,
-                rulesetName = "Live Coding Task",
+                rulesetName = taskTitle ?? "Live Coding Task",
+                taskTitle = taskTitle ?? "Live Coding Task",
+                taskDescription = taskDescription ?? "",
                 deadlineUtc = deadline?.UtcDateTime
             });
         }
@@ -129,6 +133,8 @@ public sealed class LiveCodingHub(
         var ruleset = await store.GetRuleset(sessionCode);
         if (ruleset == null)
             throw new HubException("Sesiunea nu are un ruleset valid.");
+        var taskTitle = await store.GetTaskTitle(sessionCode);
+        var taskDescription = await store.GetTaskDescription(sessionCode);
 
         var timeLimit = await store.GetTimeLimitSeconds(sessionCode);
         if (timeLimit <= 0)
@@ -152,7 +158,9 @@ public sealed class LiveCodingHub(
         await Clients.Group(sessionCode).SendAsync("sessionStarted", new
         {
             sessionCode,
-            rulesetName = "Live Coding Task",
+            rulesetName = taskTitle ?? ruleset.name ?? "Live Coding Task",
+            taskTitle = taskTitle ?? ruleset.name ?? "Live Coding Task",
+            taskDescription = taskDescription ?? "",
             deadlineUtc = DateTimeOffset.FromUnixTimeSeconds(deadline).UtcDateTime
         });
     }
@@ -198,14 +206,14 @@ public sealed class LiveCodingHub(
         ValidationResult result;
         if (errors.Count > 0)
         {
-            result = new ValidationResult
-            {
-                Passed = false,
-                Violations = errors
-                    .Select(error => new Violation("COMPILATION_ERROR", error.ToString()))
-                    .ToList()
-            };
-        }
+                result = new ValidationResult
+                {
+                    Passed = false,
+                    Violations = errors
+                        .Select(error => new Violation("COMPILATION_ERROR", $"Codul nu compilează. Corectează eroarea de C# și retrimite soluția. Detaliu: {error}"))
+                        .ToList()
+                };
+            }
         else
         {
             var index = RoslynSymbolIndex.Build(compilation);
@@ -312,11 +320,15 @@ public sealed class LiveCodingHub(
         var leaderboard = await BuildLeaderboard(sessionCode);
         var players = await store.GetPlayers(sessionCode);
         var deadline = await store.GetDeadlineUtc(sessionCode);
+        var taskTitle = await store.GetTaskTitle(sessionCode);
+        var taskDescription = await store.GetTaskDescription(sessionCode);
 
         await Clients.Caller.SendAsync("sessionState", new
         {
             status,
-            rulesetName = "Live Coding Task",
+            rulesetName = taskTitle ?? "Live Coding Task",
+            taskTitle = taskTitle ?? "Live Coding Task",
+            taskDescription = taskDescription ?? "",
             deadlineUtc = deadline?.UtcDateTime,
             leaderboard,
             players = players.Select(p => new { id = p.Key, displayName = p.Value }),

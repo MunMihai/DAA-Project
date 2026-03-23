@@ -96,21 +96,21 @@ export function AuthShell({
                     <section className="hidden lg:block">
                         <div className="rounded-3xl border border-slate-900/10 bg-white p-8 shadow-sm dark:border-white/10 dark:bg-slate-900/50">
                             <div className="inline-flex items-center gap-2 rounded-full border border-slate-900/10 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-200">
-                                Edu • Quiz • Concursuri • Live
+                                Edu • Quiz • Coding • Live
                             </div>
 
                             <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-                                Testează-ți cunoștințele și concurează corect.
+                                Testează-ți cunoștințele într-un spațiu clar și funcțional.
                             </h1>
                             <p className="mt-3 text-base leading-relaxed text-slate-700 dark:text-slate-300">
-                                Quizuri pentru capitole + concursuri de programare cu evaluare automată și clasament în timp real.
+                                Quizuri clasice, sesiuni live și teste de coding evaluate automat pentru studenți și profesori.
                             </p>
 
                             <div className="mt-6 grid grid-cols-1 gap-4">
                                 {[
                                     ["Chestionare structurate", "Întrebări clare, timp limitat, feedback imediat."],
-                                    ["Concursuri de programare", "Submisii evaluate automat, verdict + punctaj."],
-                                    ["Progres & rapoarte", "Istoric, statistici și recomandări pentru învățare."],
+                                    ["Teste live", "Participare pe cod de sesiune, clasament și feedback în timp real."],
+                                    ["Istoric rezultate", "Acces la încercări, răspunsuri și submisii evaluate."],
                                 ].map(([t, d]) => (
                                     <div
                                         key={t}
@@ -122,9 +122,8 @@ export function AuthShell({
                                 ))}
                             </div>
 
-                            <div className="mt-6 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
-                                <span>Acces rapid pentru studenți și profesori</span>
-                                <span className="font-semibold text-indigo-700 dark:text-indigo-300">Secure • Fast • Fair</span>
+                            <div className="mt-6 text-xs text-slate-600 dark:text-slate-400">
+                                Acces separat pentru studenți și profesori, cu fluxuri dedicate fiecărui rol.
                             </div>
                         </div>
                     </section>
@@ -141,22 +140,7 @@ export function AuthShell({
 
                             <div className="mt-6">{children}</div>
 
-                            <div className="mt-6 text-center text-xs text-slate-600 dark:text-slate-400">
-                                Continuând, accepți{" "}
-                                <span className="font-medium text-slate-800 dark:text-slate-200">
-                  Termenii
-                </span>{" "}
-                                și{" "}
-                                <span className="font-medium text-slate-800 dark:text-slate-200">
-                  Politica de confidențialitate
-                </span>
-                                .
-                            </div>
                         </div>
-
-                        <p className="mt-6 text-center text-xs text-slate-600 dark:text-slate-400">
-                            Suport: <span className="font-semibold text-slate-800 dark:text-slate-200">support@quizarena</span>
-                        </p>
                     </section>
                 </main>
             </div>
