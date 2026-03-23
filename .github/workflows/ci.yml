@@ -10,6 +10,7 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -19,6 +20,14 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Packages.props', 'global.json', 'NuGet.Config') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
 
       - name: Setup Node.js
         uses: actions/setup-node@v5

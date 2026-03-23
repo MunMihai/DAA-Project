@@ -4,6 +4,6 @@ WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 
-COPY .artifacts/apigateway/ ./
+COPY --link .artifacts/apigateway/ ./
 
 ENTRYPOINT ["dotnet", "Quiz.ApiGateway.dll"]

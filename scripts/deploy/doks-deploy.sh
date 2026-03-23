@@ -94,8 +94,7 @@ for entry in "${images[@]}"; do
     -f "${root_dir}/${dockerfile}" \
     -t "${full_image}" \
     "${root_dir}" \
-    --load
-  docker push "${full_image}"
+    --push
 done
 
 doctl kubernetes cluster kubeconfig save "${doks_cluster_name}"
