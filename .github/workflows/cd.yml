@@ -48,6 +48,7 @@ jobs:
         with:
           name: deploy-artifacts
           path: .artifacts
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 3
 
