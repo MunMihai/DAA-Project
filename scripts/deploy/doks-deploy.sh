@@ -25,6 +25,7 @@ done
 k8s_namespace="${K8S_NAMESPACE:-quiz-platform}"
 doks_cluster_name="${DOKS_CLUSTER_NAME:-k8s-1-35-1-do-0-fra1-1774185110679}"
 docr_registry_name="${DOCR_REGISTRY_NAME:-dev-docker-registry}"
+registry_secret_name="${DOCR_K8S_SECRET_NAME:-registry-${docr_registry_name}}"
 docker_registry_region="${DOCR_REGION:-fra1}"
 docker_registry_tier="${DOCR_SUBSCRIPTION_TIER:-basic}"
 docker_platform="${DOCKER_PLATFORM:-linux/amd64}"
@@ -101,8 +102,17 @@ doctl kubernetes cluster kubeconfig save "${doks_cluster_name}"
 
 kubectl apply -f "${root_dir}/k8s/base/namespace.yaml"
 doctl registry kubernetes-manifest "${docr_registry_name}" --namespace "${k8s_namespace}" | kubectl apply -f -
+kubectl -n "${k8s_namespace}" patch serviceaccount default \
+  --type merge \
+  -p "{\"imagePullSecrets\":[{\"name\":\"${registry_secret_name}\"}]}"
 bash "${root_dir}/scripts/deploy/apply-quiz-secrets.sh"
 kubectl apply -k "${root_dir}/k8s/overlays/digitalocean"
+
+for deployment in authservice quizservice livesessionservice codingservice apigateway web; do
+  kubectl -n "${k8s_namespace}" patch deployment "${deployment}" \
+    --type strategic \
+    -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"${registry_secret_name}\"}]}}}}"
+done
 
 kubectl -n "${k8s_namespace}" set image deployment/authservice \
   authservice="registry.digitalocean.com/${docr_registry_name}/authservice:${image_tag}"
